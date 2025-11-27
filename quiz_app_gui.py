@@ -380,18 +380,36 @@ def main():
             if st.button("🔧 錯題複習", use_container_width=True):
                 if not os.path.exists(ERROR_LOG_FILE):
                     st.warning("⚠️ 目前還沒有錯題紀錄喔！")
+                elif not st.session_state.selected_books:
+                    st.warning("⚠️ 請至少選擇一冊來進行複習！")
                 else:
-                    db = load_vocabulary(ERROR_LOG_FILE)
-                    if not db:
+                    # 讀取錯題
+                    mistakes_db = load_vocabulary(ERROR_LOG_FILE)
+                    
+                    if not mistakes_db:
                         st.warning("⚠️ 錯題檔案讀取失敗或內容為空。")
-                    elif len(db) < 3:
-                        st.warning("⚠️ 錯題生字少於 3 個，請先多練習累積錯題！")
                     else:
-                        st.session_state.db = db
-                        st.session_state.game_mode = 'review'
-                        reset_game()
-                        next_question()
-                        st.rerun()
+                        # 建立生字對應冊別的查表 (從完整題庫中)
+                        char_to_book = {item['char']: item['book'] for item in full_db}
+                        
+                        # 過濾錯題：只保留在「已選冊別」中的字
+                        # 注意：如果錯題本裡的字在主題庫找不到（例如被刪除了），預設歸類為 '未分類'
+                        filtered_mistakes = []
+                        for item in mistakes_db:
+                            book = char_to_book.get(item['char'], '未分類')
+                            if book in st.session_state.selected_books:
+                                # 把冊別資訊補進去 (雖然遊戲中可能用不到，但保持資料完整)
+                                item['book'] = book
+                                filtered_mistakes.append(item)
+                        
+                        if len(filtered_mistakes) < 3:
+                            st.warning(f"⚠️ 選擇範圍內的錯題少於 3 個 (共 {len(filtered_mistakes)} 個)，請先多練習累積錯題！")
+                        else:
+                            st.session_state.db = filtered_mistakes
+                            st.session_state.game_mode = 'review'
+                            reset_game()
+                            next_question()
+                            st.rerun()
 
     # Game Interface
     elif st.session_state.game_mode in ['general', 'review']:
