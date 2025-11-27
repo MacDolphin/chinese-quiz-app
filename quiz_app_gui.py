@@ -3,6 +3,8 @@ import random
 import csv
 import os
 from datetime import datetime
+from gtts import gTTS
+import io
 
 # ==========================================
 # 設定區
@@ -11,8 +13,21 @@ VOCAB_FILE = 'vocabulary.csv'      # 主要題庫
 ERROR_LOG_FILE = 'review_list.csv' # 錯題紀錄
 ENCODING_TYPE = 'utf-8-sig'        # 編碼設定
 
-# 正向回饋語句庫
-praises = ["太棒了！🎉", "完全正確！🌟", "你真厲害！💪", "水啦！答對了！✨", "Excellent!", "你是漢字小天才！🎓"]
+# 正向回饋語句庫 (擴充版)
+praises = [
+    "太棒了！🎉", 
+    "完全正確！🌟", 
+    "你真厲害！💪", 
+    "水啦！答對了！✨", 
+    "Excellent!", 
+    "你是漢字小天才！🎓",
+    "好聰明喔！🧠",
+    "答得好！繼續保持！🚀",
+    "沒錯！就是這個！🎯",
+    "你的中文越來越好了！📈",
+    "太神了！💯",
+    "給你一個大拇指！👍"
+]
 
 # ==========================================
 # 資料處理函式
@@ -67,7 +82,6 @@ def log_mistake(word_data):
                 'zhuyin': word_data['zhuyin'],
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
-            # st.toast(f"📝 [{word_data['char']}] 已加入複習清單！") # Optional: show toast
             
     except Exception as e:
         st.error(f"⚠️ 無法寫入錯題紀錄: {e}")
@@ -96,6 +110,17 @@ def get_question(db):
     
     return target, options, mode
 
+def generate_audio_bytes(text, lang='zh-tw'):
+    """使用 gTTS 產生語音並回傳 bytes"""
+    try:
+        tts = gTTS(text=text, lang=lang)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except Exception as e:
+        print(f"Audio generation failed: {e}")
+        return None
+
 # ==========================================
 # Streamlit 介面邏輯
 # ==========================================
@@ -113,12 +138,15 @@ def init_session_state():
         st.session_state.game_mode = None # 'general' or 'review' or None (Main Menu)
     if 'db' not in st.session_state:
         st.session_state.db = []
+    if 'audio_to_play' not in st.session_state:
+        st.session_state.audio_to_play = None
 
 def reset_game():
     st.session_state.current_question = None
     st.session_state.score = 0
     st.session_state.total_answered = 0
     st.session_state.feedback = None
+    st.session_state.audio_to_play = None
 
 def next_question():
     target, options, mode = get_question(st.session_state.db)
@@ -128,6 +156,7 @@ def next_question():
         'mode': mode
     }
     st.session_state.feedback = None
+    st.session_state.audio_to_play = None
 
 def check_answer(selected_option):
     target = st.session_state.current_question['target']
@@ -136,32 +165,94 @@ def check_answer(selected_option):
     
     if selected_option == target:
         st.session_state.score += 1
+        praise = random.choice(praises)
         st.session_state.feedback = {
             'type': 'success',
-            'msg': f"✅ {random.choice(praises)}"
+            'msg': f"✅ {praise}"
         }
+        # 答對時播放鼓勵語音
+        st.session_state.audio_to_play = praise
     else:
         st.session_state.feedback = {
             'type': 'error',
             'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
         }
         log_mistake(target)
-    
-    # Delay slightly or show a 'Next' button? 
-    # For simplicity in Streamlit, we usually update state and force rerun.
-    # We will show the feedback and a "Next Question" button.
+        # 答錯時播放正確答案
+        st.session_state.audio_to_play = f"哎呀答錯了，正確答案是 {target['char']}"
 
 def main():
     st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
+    
+    # ==========================================
+    # 自定義 CSS 樣式
+    # ==========================================
+    st.markdown("""
+    <style>
+    /* 全局按鈕樣式調整 */
+    div.stButton > button {
+        font-size: 28px !important;  /* 放大按鈕文字 */
+        height: 80px !important;     /* 增加按鈕高度 */
+        border-radius: 15px !important; /* 圓角 */
+        border: 2px solid #e0e0e0;
+        background-color: #ffffff;
+        color: #333333;
+        transition: all 0.3s ease;
+    }
+    
+    /* 滑鼠懸停效果 */
+    div.stButton > button:hover {
+        border-color: #4CAF50 !important;
+        color: #4CAF50 !important;
+        background-color: #f9fff9 !important;
+        transform: scale(1.02);
+    }
+
+    /* 針對主要選項按鈕的容器微調 */
+    .option-btn-container {
+        margin-top: 20px;
+    }
+    
+    /* 題目文字樣式 */
+    .question-text {
+        font-size: 32px;
+        font-weight: bold;
+        color: #2c3e50;
+        text-align: center;
+        margin-bottom: 20px;
+        background-color: #e8f6f3;
+        padding: 15px;
+        border-radius: 10px;
+    }
+    
+    /* 大字卡樣式 */
+    .big-char {
+        font-size: 100px;
+        font-weight: bold;
+        color: #e74c3c; /* 紅色字體更顯眼 */
+        text-align: center;
+        padding: 20px;
+        background-color: #fff5f5;
+        border-radius: 20px;
+        border: 3px dashed #ffcccb;
+        margin-bottom: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     init_session_state()
 
     st.title("📝 美洲華語生字小幫手")
 
     # Sidebar for navigation
-    if st.button("🏠 回主選單"):
-        st.session_state.game_mode = None
-        reset_game()
-        st.rerun()
+    with st.sidebar:
+        st.header("功能選單")
+        if st.button("🏠 回主選單", use_container_width=True):
+            st.session_state.game_mode = None
+            reset_game()
+            st.rerun()
+        st.markdown("---")
+        st.caption("Designed for Tablet")
 
     # Main Menu
     if st.session_state.game_mode is None:
@@ -170,7 +261,7 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("📖 一般練習模式", use_container_width=True):
+            if st.button("📖 一般練習", use_container_width=True):
                 db = load_vocabulary(VOCAB_FILE)
                 if not db:
                     st.error("⚠️ 找不到題庫檔案，請確認 vocabulary.csv 存在。")
@@ -184,7 +275,7 @@ def main():
                     st.rerun()
 
         with col2:
-            if st.button("🔧 錯題複習模式", use_container_width=True):
+            if st.button("🔧 錯題複習", use_container_width=True):
                 if not os.path.exists(ERROR_LOG_FILE):
                     st.warning("⚠️ 目前還沒有錯題紀錄喔！")
                 else:
@@ -204,8 +295,11 @@ def main():
     elif st.session_state.game_mode in ['general', 'review']:
         
         # Display Score
-        st.caption(f"目前模式: {'一般練習' if st.session_state.game_mode == 'general' else '錯題複習'}")
-        st.metric("得分", f"{st.session_state.score} / {st.session_state.total_answered}")
+        col_score1, col_score2 = st.columns([3, 1])
+        with col_score1:
+            st.caption(f"目前模式: {'一般練習' if st.session_state.game_mode == 'general' else '錯題複習'}")
+        with col_score2:
+            st.metric("得分", f"{st.session_state.score} / {st.session_state.total_answered}")
         
         # Check if we have a question
         if st.session_state.current_question is None:
@@ -218,24 +312,32 @@ def main():
         st.divider()
         if q['mode'] == 1:
             # Char -> Zhuyin
-            st.markdown(f"<h1 style='text-align: center; font-size: 80px;'>{q['target']['char']}</h1>", unsafe_allow_html=True)
-            question_text = "請選擇正確的**注音**："
+            st.markdown(f"<div class='big-char'>{q['target']['char']}</div>", unsafe_allow_html=True)
+            question_text = "請選擇正確的 <b>注音</b>"
         else:
             # Zhuyin -> Char
-            st.markdown(f"<h1 style='text-align: center; font-size: 80px;'>{q['target']['zhuyin']}</h1>", unsafe_allow_html=True)
-            question_text = "請選擇正確的**國字**："
+            st.markdown(f"<div class='big-char'>{q['target']['zhuyin']}</div>", unsafe_allow_html=True)
+            question_text = "請選擇正確的 <b>國字</b>"
             
-        st.markdown(f"<h3 style='text-align: center;'>{question_text}</h3>", unsafe_allow_html=True)
-        st.divider()
+        st.markdown(f"<div class='question-text'>{question_text}</div>", unsafe_allow_html=True)
+        # st.divider()
 
         # Display Options or Feedback
         if st.session_state.feedback:
             # Show feedback
             if st.session_state.feedback['type'] == 'success':
-                st.success(st.session_state.feedback['msg'])
+                st.success(st.session_state.feedback['msg'], icon="✅")
             else:
-                st.error(st.session_state.feedback['msg'])
+                st.error(st.session_state.feedback['msg'], icon="❌")
             
+            # Play Audio if available
+            if st.session_state.audio_to_play:
+                audio_bytes = generate_audio_bytes(st.session_state.audio_to_play)
+                if audio_bytes:
+                    st.audio(audio_bytes, format='audio/mp3', autoplay=True)
+                # Clear it so it doesn't replay on manual rerun (though button click causes rerun anyway)
+                st.session_state.audio_to_play = None
+
             if st.button("下一題 ➡️", type="primary", use_container_width=True):
                 next_question()
                 st.rerun()
