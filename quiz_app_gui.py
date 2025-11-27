@@ -3,8 +3,10 @@ import random
 import csv
 import os
 from datetime import datetime
-import asyncio
-import edge_tts
+import subprocess
+import tempfile
+import io
+from gtts import gTTS
 
 # ==========================================
 # 設定區
@@ -110,36 +112,52 @@ def get_question(db):
     
     return target, options, mode
 
-async def get_edge_tts_audio(text, voice="zh-TW-HsiaoChenNeural", rate="+20%"):
-    """使用 Edge TTS 產生語音 (非同步)"""
-    communicate = edge_tts.Communicate(text, voice, rate=rate)
-    # Stream to memory
-    mp3_data = b""
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            mp3_data += chunk["data"]
-    return mp3_data
-
 def generate_audio_bytes(text):
-    """包裝非同步函式供 Streamlit 同步呼叫"""
+    """
+    嘗試使用 Edge TTS (CLI 模式) 產生高品質語音。
+    如果失敗，則降級使用 gTTS (Google TTS)。
+    """
+    # 1. Try Edge TTS via CLI (Subprocess)
     try:
-        # 使用現有的 loop，避免 asyncio.run() 建立新 loop 可能導致的問題
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+            temp_filename = temp_file.name
+        
+        # Run edge-tts command
+        # edge-tts --text "Hello" --write-media hello.mp3 --voice zh-TW-HsiaoChenNeural --rate=+20%
+        command = [
+            "edge-tts",
+            "--text", text,
+            "--write-media", temp_filename,
+            "--voice", "zh-TW-HsiaoChenNeural",
+            "--rate=+20%"
+        ]
+        
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        if result.returncode == 0 and os.path.exists(temp_filename):
+            with open(temp_filename, "rb") as f:
+                audio_bytes = f.read()
+            os.remove(temp_filename) # Clean up
+            return audio_bytes
+        else:
+            print(f"Edge TTS CLI failed: {result.stderr}")
+            # Fall through to gTTS
             
-        return loop.run_until_complete(get_edge_tts_audio(text))
     except Exception as e:
-        st.warning(f"Audio generation failed with rate adjustment, retrying normal speed... ({e})")
-        try:
-            # Fallback: Try without rate adjustment
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(get_edge_tts_audio(text, rate="+0%"))
-        except Exception as e2:
-            st.error(f"Audio generation failed: {e2}")
-            return None
+        print(f"Edge TTS execution error: {e}")
+        # Fall through to gTTS
+
+    # 2. Fallback to gTTS
+    try:
+        st.toast("⚠️ 高品質語音連線失敗，轉為使用 Google 語音。")
+        tts = gTTS(text=text, lang='zh-tw')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except Exception as e:
+        st.error(f"Audio generation failed completely: {e}")
+        return None
 
 # ==========================================
 # Streamlit 介面邏輯
