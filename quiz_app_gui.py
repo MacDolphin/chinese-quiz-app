@@ -108,12 +108,29 @@ def get_question(db):
     
     return target, options, mode
 
-def get_praise_audio_path(filename):
-    """取得鼓勵語音檔路徑"""
-    path = os.path.join('audio_minimal', f"{filename}.mp3")
-    if os.path.exists(path):
-        return path
-    return None
+def speak_character(char):
+    """使用瀏覽器語音朗讀文字（在電腦上有效，移動裝置上靜默跳過）"""
+    import streamlit.components.v1 as components
+    
+    # 清理文字，避免 JavaScript 注入
+    safe_char = char.replace('"', '\\"').replace("'", "\\'")
+    
+    html_code = f"""
+    <script>
+        (function() {{
+            try {{
+                const utterance = new SpeechSynthesisUtterance("{safe_char}");
+                utterance.lang = 'zh-TW';
+                utterance.rate = 1.0;
+                speechSynthesis.speak(utterance);
+            }} catch(e) {{
+                // 靜默失敗（移動裝置可能不支援）
+                console.log('Speech synthesis not available');
+            }}
+        }})();
+    </script>
+    """
+    components.html(html_code, height=0)
 
 # ==========================================
 # Streamlit 介面邏輯
@@ -136,15 +153,15 @@ def init_session_state():
         st.session_state.game_mode = None # 'general' or 'review' or None (Main Menu)
     if 'db' not in st.session_state:
         st.session_state.db = []
-    if 'audio_to_play' not in st.session_state:
-        st.session_state.audio_to_play = None
+    if 'char_to_speak' not in st.session_state:
+        st.session_state.char_to_speak = None
 
 def reset_game():
     st.session_state.current_question = None
     st.session_state.score = 0
     st.session_state.total_answered = 0
     st.session_state.feedback = None
-    st.session_state.audio_to_play = None
+    st.session_state.char_to_speak = None
 
 def next_question():
     target, options, mode = get_question(st.session_state.db)
@@ -154,7 +171,7 @@ def next_question():
         'mode': mode
     }
     st.session_state.feedback = None
-    st.session_state.audio_to_play = None
+    st.session_state.char_to_speak = None
 
 def check_answer(selected_option):
     target = st.session_state.current_question['target']
@@ -168,16 +185,15 @@ def check_answer(selected_option):
             'type': 'success',
             'msg': f"✅ {praise['text']}{praise['emoji']}"
         }
-        # 答對時播放鼓勵語音
-        st.session_state.audio_to_play = get_praise_audio_path(praise['filename'])
     else:
         st.session_state.feedback = {
             'type': 'error',
             'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
         }
         log_mistake(target)
-        # 答錯時不播放語音（避免檔案過多）
-        st.session_state.audio_to_play = None
+    
+    # 無論答對或答錯，都朗讀正確答案（該字的讀音）
+    st.session_state.char_to_speak = target['char']
 
 def main():
     st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
@@ -328,11 +344,10 @@ def main():
             else:
                 st.error(st.session_state.feedback['msg'], icon="❌")
             
-            # Play Audio if available
-            if st.session_state.audio_to_play and os.path.exists(st.session_state.audio_to_play):
-                st.audio(st.session_state.audio_to_play, format='audio/mp3', autoplay=True)
-                # Clear it so it doesn't replay on manual rerun
-                st.session_state.audio_to_play = None
+            # 朗讀正確答案（在電腦上有效，移動裝置上靜默跳過）
+            if st.session_state.char_to_speak:
+                speak_character(st.session_state.char_to_speak)
+                st.session_state.char_to_speak = None
 
             if st.button("下一題 ➡️", type="primary", use_container_width=True):
                 next_question()
