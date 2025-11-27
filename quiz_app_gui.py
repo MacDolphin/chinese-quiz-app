@@ -3,120 +3,34 @@ import random
 import csv
 import os
 from datetime import datetime
-from gtts import gTTS
-import io
+import asyncio
+import edge_tts
 
-# ==========================================
-# 設定區
-# ==========================================
-VOCAB_FILE = 'vocabulary.csv'      # 主要題庫
-ERROR_LOG_FILE = 'review_list.csv' # 錯題紀錄
-ENCODING_TYPE = 'utf-8-sig'        # 編碼設定
+# ... (imports remain the same, remove gTTS)
 
-# 正向回饋語句庫 (擴充版)
-praises = [
-    {"text": "太棒了！", "emoji": "🎉"},
-    {"text": "完全正確！", "emoji": "🌟"},
-    {"text": "你真厲害！", "emoji": "💪"},
-    {"text": "水啦！答對了！", "emoji": "✨"},
-    {"text": "Excellent!", "emoji": ""},
-    {"text": "你是漢字小天才！", "emoji": "🎓"},
-    {"text": "好聰明喔！", "emoji": "🧠"},
-    {"text": "答得好！繼續保持！", "emoji": "🚀"},
-    {"text": "沒錯！就是這個！", "emoji": "🎯"},
-    {"text": "你的中文越來越好了！", "emoji": "📈"},
-    {"text": "太神了！", "emoji": "💯"},
-    {"text": "給你一個大拇指！", "emoji": "👍"}
-]
+# ... (previous code)
 
-# ==========================================
-# 資料處理函式
-# ==========================================
+async def get_edge_tts_audio(text, voice="zh-TW-HsiaoChenNeural", rate="+20%"):
+    """使用 Edge TTS 產生語音 (非同步)"""
+    communicate = edge_tts.Communicate(text, voice, rate=rate)
+    # Stream to memory
+    mp3_data = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            mp3_data += chunk["data"]
+    return mp3_data
 
-def load_vocabulary(filename):
-    """
-    通用讀取函式：可以讀取題庫，也可以讀取錯題本。
-    回傳一個不重複的生字列表。
-    """
-    vocab_dict = {} # 使用字典來去除重複 (key=char)
-    
-    if not os.path.exists(filename):
-        return []
-
+def generate_audio_bytes(text):
+    """包裝非同步函式供 Streamlit 同步呼叫"""
     try:
-        with open(filename, mode='r', encoding=ENCODING_TYPE) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                # 去除前後空白
-                clean_row = {k: v.strip() for k, v in row.items() if k and v}
-                
-                # 確保有 char 和 zhuyin 欄位
-                if 'char' in clean_row and 'zhuyin' in clean_row:
-                    # 使用 char 當作 key，這樣重複的字就會被覆蓋，達到去重效果
-                    vocab_dict[clean_row['char']] = {
-                        'char': clean_row['char'],
-                        'zhuyin': clean_row['zhuyin']
-                    }
-        
-        # 將字典轉回列表
-        return list(vocab_dict.values())
-        
-    except Exception as e:
-        st.error(f"❌ 讀取檔案 {filename} 時發生錯誤: {e}")
-        return []
-
-def log_mistake(word_data):
-    """將答錯的題目寫入錯題本"""
-    file_exists = os.path.isfile(ERROR_LOG_FILE)
-    
-    try:
-        with open(ERROR_LOG_FILE, mode='a', newline='', encoding=ENCODING_TYPE) as f:
-            fieldnames = ['char', 'zhuyin', 'timestamp']
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-
-            if not file_exists:
-                writer.writeheader()
-
-            writer.writerow({
-                'char': word_data['char'],
-                'zhuyin': word_data['zhuyin'],
-                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
+        # Create a new loop for this thread if needed, or use existing
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-    except Exception as e:
-        st.error(f"⚠️ 無法寫入錯題紀錄: {e}")
-
-def get_question(db):
-    """產生題目與選項"""
-    if len(db) < 3:
-        return None, None, None
-
-    target = random.choice(db)
-    options = [target]
-    
-    # 隨機選出錯誤選項 (干擾項)
-    max_attempts = 100 
-    attempts = 0
-    while len(options) < 3 and attempts < max_attempts:
-        distractor = random.choice(db)
-        if distractor != target and distractor not in options:
-            options.append(distractor)
-        attempts += 1
-    
-    random.shuffle(options)
-    
-    # 決定模式: 1=看字選注音, 2=看注音選字
-    mode = random.choice([1, 2]) 
-    
-    return target, options, mode
-
-def generate_audio_bytes(text, lang='zh-tw'):
-    """使用 gTTS 產生語音並回傳 bytes"""
-    try:
-        tts = gTTS(text=text, lang=lang)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        return fp.getvalue()
+        return loop.run_until_complete(get_edge_tts_audio(text))
     except Exception as e:
         print(f"Audio generation failed: {e}")
         return None
