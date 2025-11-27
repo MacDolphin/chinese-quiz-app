@@ -108,23 +108,12 @@ def get_question(db):
     
     return target, options, mode
 
-def speak_text(text):
-    """使用瀏覽器內建的語音合成播放文字"""
-    import streamlit.components.v1 as components
-    
-    # 使用 Web Speech API 進行語音播放
-    html_code = f"""
-    <script>
-        function speak() {{
-            const utterance = new SpeechSynthesisUtterance("{text}");
-            utterance.lang = 'zh-TW';
-            utterance.rate = 1.2;  // 語速稍快
-            speechSynthesis.speak(utterance);
-        }}
-        speak();
-    </script>
-    """
-    components.html(html_code, height=0)
+def get_praise_audio_path(filename):
+    """取得鼓勵語音檔路徑"""
+    path = os.path.join('audio_minimal', f"{filename}.mp3")
+    if os.path.exists(path):
+        return path
+    return None
 
 # ==========================================
 # Streamlit 介面邏輯
@@ -179,16 +168,16 @@ def check_answer(selected_option):
             'type': 'success',
             'msg': f"✅ {praise['text']}{praise['emoji']}"
         }
-        # 答對時播放鼓勵語音 (只唸文字)
-        st.session_state.audio_to_play = praise['text']
+        # 答對時播放鼓勵語音
+        st.session_state.audio_to_play = get_praise_audio_path(praise['filename'])
     else:
         st.session_state.feedback = {
             'type': 'error',
             'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
         }
         log_mistake(target)
-        # 答錯時播放正確答案
-        st.session_state.audio_to_play = f"{target['char']}"
+        # 答錯時不播放語音（避免檔案過多）
+        st.session_state.audio_to_play = None
 
 def main():
     st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
@@ -340,9 +329,8 @@ def main():
                 st.error(st.session_state.feedback['msg'], icon="❌")
             
             # Play Audio if available
-            if st.session_state.audio_to_play:
-                # audio_to_play now holds the text to speak
-                speak_text(st.session_state.audio_to_play)
+            if st.session_state.audio_to_play and os.path.exists(st.session_state.audio_to_play):
+                st.audio(st.session_state.audio_to_play, format='audio/mp3', autoplay=True)
                 # Clear it so it doesn't replay on manual rerun
                 st.session_state.audio_to_play = None
 
