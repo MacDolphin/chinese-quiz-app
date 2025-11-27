@@ -3,10 +3,6 @@ import random
 import csv
 import os
 from datetime import datetime
-import subprocess
-import tempfile
-import io
-from gtts import gTTS
 
 # ==========================================
 # 設定區
@@ -15,149 +11,65 @@ VOCAB_FILE = 'vocabulary.csv'      # 主要題庫
 ERROR_LOG_FILE = 'review_list.csv' # 錯題紀錄
 ENCODING_TYPE = 'utf-8-sig'        # 編碼設定
 
-# 正向回饋語句庫 (擴充版)
+# 正向回饋語句庫 (擴充版) - 必須與 generate_audio_assets.py 一致
 praises = [
-    {"text": "太棒了！", "emoji": "🎉"},
-    {"text": "完全正確！", "emoji": "🌟"},
-    {"text": "你真厲害！", "emoji": "💪"},
-    {"text": "水啦！答對了！", "emoji": "✨"},
-    {"text": "Excellent!", "emoji": ""},
-    {"text": "你是漢字小天才！", "emoji": "🎓"},
-    {"text": "好聰明喔！", "emoji": "🧠"},
-    {"text": "答得好！繼續保持！", "emoji": "🚀"},
-    {"text": "沒錯！就是這個！", "emoji": "🎯"},
-    {"text": "你的中文越來越好了！", "emoji": "📈"},
-    {"text": "太神了！", "emoji": "💯"},
-    {"text": "給你一個大拇指！", "emoji": "👍"}
+    {"text": "太棒了！", "emoji": "🎉", "filename": "praise_01"},
+    {"text": "完全正確！", "emoji": "🌟", "filename": "praise_02"},
+    {"text": "你真厲害！", "emoji": "💪", "filename": "praise_03"},
+    {"text": "水啦！答對了！", "emoji": "✨", "filename": "praise_04"},
+    {"text": "Excellent!", "emoji": "", "filename": "praise_05"},
+    {"text": "你是漢字小天才！", "emoji": "🎓", "filename": "praise_06"},
+    {"text": "好聰明喔！", "emoji": "🧠", "filename": "praise_07"},
+    {"text": "答得好！繼續保持！", "emoji": "🚀", "filename": "praise_08"},
+    {"text": "沒錯！就是這個！", "emoji": "🎯", "filename": "praise_09"},
+    {"text": "你的中文越來越好了！", "emoji": "📈", "filename": "praise_10"},
+    {"text": "太神了！", "emoji": "💯", "filename": "praise_11"},
+    {"text": "給你一個大拇指！", "emoji": "👍", "filename": "praise_12"}
 ]
 
+# ... (load_vocabulary, log_mistake, get_question remain the same)
+
+def get_audio_path(filename, type='vocab'):
+    """取得音檔路徑"""
+    # type: 'vocab' or 'praises'
+    # filename: char for vocab, praise_xx for praises
+    if type == 'vocab':
+        path = os.path.join('audio', 'vocab', f"{filename}.mp3")
+    else:
+        path = os.path.join('audio', 'praises', f"{filename}.mp3")
+    
+    if os.path.exists(path):
+        return path
+    return None
+
 # ==========================================
-# 資料處理函式
+# Streamlit 介面邏輯
 # ==========================================
 
-def load_vocabulary(filename):
-    """
-    通用讀取函式：可以讀取題庫，也可以讀取錯題本。
-    回傳一個不重複的生字列表。
-    """
-    vocab_dict = {} # 使用字典來去除重複 (key=char)
+# ... (init_session_state, reset_game, next_question remain the same)
+
+def check_answer(selected_option):
+    target = st.session_state.current_question['target']
     
-    if not os.path.exists(filename):
-        return []
-
-    try:
-        with open(filename, mode='r', encoding=ENCODING_TYPE) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                # 去除前後空白
-                clean_row = {k: v.strip() for k, v in row.items() if k and v}
-                
-                # 確保有 char 和 zhuyin 欄位
-                if 'char' in clean_row and 'zhuyin' in clean_row:
-                    # 使用 char 當作 key，這樣重複的字就會被覆蓋，達到去重效果
-                    vocab_dict[clean_row['char']] = {
-                        'char': clean_row['char'],
-                        'zhuyin': clean_row['zhuyin']
-                    }
-        
-        # 將字典轉回列表
-        return list(vocab_dict.values())
-        
-    except Exception as e:
-        st.error(f"❌ 讀取檔案 {filename} 時發生錯誤: {e}")
-        return []
-
-def log_mistake(word_data):
-    """將答錯的題目寫入錯題本"""
-    file_exists = os.path.isfile(ERROR_LOG_FILE)
+    st.session_state.total_answered += 1
     
-    try:
-        with open(ERROR_LOG_FILE, mode='a', newline='', encoding=ENCODING_TYPE) as f:
-            fieldnames = ['char', 'zhuyin', 'timestamp']
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-
-            if not file_exists:
-                writer.writeheader()
-
-            writer.writerow({
-                'char': word_data['char'],
-                'zhuyin': word_data['zhuyin'],
-                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-            
-    except Exception as e:
-        st.error(f"⚠️ 無法寫入錯題紀錄: {e}")
-
-def get_question(db):
-    """產生題目與選項"""
-    if len(db) < 3:
-        return None, None, None
-
-    target = random.choice(db)
-    options = [target]
-    
-    # 隨機選出錯誤選項 (干擾項)
-    max_attempts = 100 
-    attempts = 0
-    while len(options) < 3 and attempts < max_attempts:
-        distractor = random.choice(db)
-        if distractor != target and distractor not in options:
-            options.append(distractor)
-        attempts += 1
-    
-    random.shuffle(options)
-    
-    # 決定模式: 1=看字選注音, 2=看注音選字
-    mode = random.choice([1, 2]) 
-    
-    return target, options, mode
-
-def generate_audio_bytes(text):
-    """
-    嘗試使用 Edge TTS (CLI 模式) 產生高品質語音。
-    如果失敗，則降級使用 gTTS (Google TTS)。
-    """
-    # 1. Try Edge TTS via CLI (Subprocess)
-    try:
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-            temp_filename = temp_file.name
-        
-        # Run edge-tts command
-        # edge-tts --text "Hello" --write-media hello.mp3 --voice zh-TW-HsiaoChenNeural --rate=+20%
-        command = [
-            "edge-tts",
-            "--text", text,
-            "--write-media", temp_filename,
-            "--voice", "zh-TW-HsiaoChenNeural",
-            "--rate=+20%"
-        ]
-        
-        result = subprocess.run(command, capture_output=True, text=True)
-        
-        if result.returncode == 0 and os.path.exists(temp_filename):
-            with open(temp_filename, "rb") as f:
-                audio_bytes = f.read()
-            os.remove(temp_filename) # Clean up
-            return audio_bytes
-        else:
-            print(f"Edge TTS CLI failed: {result.stderr}")
-            # Fall through to gTTS
-            
-    except Exception as e:
-        print(f"Edge TTS execution error: {e}")
-        # Fall through to gTTS
-
-    # 2. Fallback to gTTS
-    try:
-        st.toast("⚠️ 高品質語音連線失敗，轉為使用 Google 語音。")
-        tts = gTTS(text=text, lang='zh-tw')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        return fp.getvalue()
-    except Exception as e:
-        st.error(f"Audio generation failed completely: {e}")
-        return None
+    if selected_option == target:
+        st.session_state.score += 1
+        praise = random.choice(praises)
+        st.session_state.feedback = {
+            'type': 'success',
+            'msg': f"✅ {praise['text']}{praise['emoji']}"
+        }
+        # 答對時播放鼓勵語音
+        st.session_state.audio_to_play = get_audio_path(praise['filename'], type='praises')
+    else:
+        st.session_state.feedback = {
+            'type': 'error',
+            'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
+        }
+        log_mistake(target)
+        # 答錯時播放正確答案 (單字發音)
+        st.session_state.audio_to_play = get_audio_path(target['char'], type='vocab')
 
 # ==========================================
 # Streamlit 介面邏輯
@@ -370,10 +282,13 @@ def main():
             
             # Play Audio if available
             if st.session_state.audio_to_play:
-                audio_bytes = generate_audio_bytes(st.session_state.audio_to_play)
-                if audio_bytes:
-                    st.audio(audio_bytes, format='audio/mp3', autoplay=True)
-                # Clear it so it doesn't replay on manual rerun (though button click causes rerun anyway)
+                # audio_to_play now holds the file path
+                if os.path.exists(st.session_state.audio_to_play):
+                    st.audio(st.session_state.audio_to_play, format='audio/mp3', autoplay=True)
+                else:
+                    st.warning(f"Audio file not found: {st.session_state.audio_to_play}")
+                
+                # Clear it so it doesn't replay on manual rerun
                 st.session_state.audio_to_play = None
 
             if st.button("下一題 ➡️", type="primary", use_container_width=True):
