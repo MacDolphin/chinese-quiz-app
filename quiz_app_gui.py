@@ -27,49 +27,108 @@ praises = [
     {"text": "給你一個大拇指！", "emoji": "👍", "filename": "praise_12"}
 ]
 
-# ... (load_vocabulary, log_mistake, get_question remain the same)
+# ==========================================
+# 資料處理函式
+# ==========================================
 
-def get_audio_path(filename, type='vocab'):
-    """取得音檔路徑"""
-    # type: 'vocab' or 'praises'
-    # filename: char for vocab, praise_xx for praises
-    if type == 'vocab':
-        path = os.path.join('audio', 'vocab', f"{filename}.mp3")
-    else:
-        path = os.path.join('audio', 'praises', f"{filename}.mp3")
+def load_vocabulary(filename):
+    """
+    通用讀取函式：可以讀取題庫，也可以讀取錯題本。
+    回傳一個不重複的生字列表。
+    """
+    vocab_dict = {} # 使用字典來去除重複 (key=char)
     
-    if os.path.exists(path):
-        return path
-    return None
+    if not os.path.exists(filename):
+        return []
+
+    try:
+        with open(filename, mode='r', encoding=ENCODING_TYPE) as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                # 去除前後空白
+                clean_row = {k: v.strip() for k, v in row.items() if k and v}
+                
+                # 確保有 char 和 zhuyin 欄位
+                if 'char' in clean_row and 'zhuyin' in clean_row:
+                    # 使用 char 當作 key，這樣重複的字就會被覆蓋，達到去重效果
+                    vocab_dict[clean_row['char']] = {
+                        'char': clean_row['char'],
+                        'zhuyin': clean_row['zhuyin']
+                    }
+        
+        # 將字典轉回列表
+        return list(vocab_dict.values())
+        
+    except Exception as e:
+        st.error(f"❌ 讀取檔案 {filename} 時發生錯誤: {e}")
+        return []
+
+def log_mistake(word_data):
+    """將答錯的題目寫入錯題本"""
+    file_exists = os.path.isfile(ERROR_LOG_FILE)
+    
+    try:
+        with open(ERROR_LOG_FILE, mode='a', newline='', encoding=ENCODING_TYPE) as f:
+            fieldnames = ['char', 'zhuyin', 'timestamp']
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+
+            if not file_exists:
+                writer.writeheader()
+
+            writer.writerow({
+                'char': word_data['char'],
+                'zhuyin': word_data['zhuyin'],
+                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            
+    except Exception as e:
+        st.error(f"⚠️ 無法寫入錯題紀錄: {e}")
+
+def get_question(db):
+    """產生題目與選項"""
+    if len(db) < 3:
+        return None, None, None
+
+    target = random.choice(db)
+    options = [target]
+    
+    # 隨機選出錯誤選項 (干擾項)
+    max_attempts = 100 
+    attempts = 0
+    while len(options) < 3 and attempts < max_attempts:
+        distractor = random.choice(db)
+        if distractor != target and distractor not in options:
+            options.append(distractor)
+        attempts += 1
+    
+    random.shuffle(options)
+    
+    # 決定模式: 1=看字選注音, 2=看注音選字
+    mode = random.choice([1, 2]) 
+    
+    return target, options, mode
+
+def speak_text(text):
+    """使用瀏覽器內建的語音合成播放文字"""
+    import streamlit.components.v1 as components
+    
+    # 使用 Web Speech API 進行語音播放
+    html_code = f"""
+    <script>
+        function speak() {{
+            const utterance = new SpeechSynthesisUtterance("{text}");
+            utterance.lang = 'zh-TW';
+            utterance.rate = 1.2;  // 語速稍快
+            speechSynthesis.speak(utterance);
+        }}
+        speak();
+    </script>
+    """
+    components.html(html_code, height=0)
 
 # ==========================================
 # Streamlit 介面邏輯
 # ==========================================
-
-# ... (init_session_state, reset_game, next_question remain the same)
-
-def check_answer(selected_option):
-    target = st.session_state.current_question['target']
-    
-    st.session_state.total_answered += 1
-    
-    if selected_option == target:
-        st.session_state.score += 1
-        praise = random.choice(praises)
-        st.session_state.feedback = {
-            'type': 'success',
-            'msg': f"✅ {praise['text']}{praise['emoji']}"
-        }
-        # 答對時播放鼓勵語音
-        st.session_state.audio_to_play = get_audio_path(praise['filename'], type='praises')
-    else:
-        st.session_state.feedback = {
-            'type': 'error',
-            'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
-        }
-        log_mistake(target)
-        # 答錯時播放正確答案 (單字發音)
-        st.session_state.audio_to_play = get_audio_path(target['char'], type='vocab')
 
 # ==========================================
 # Streamlit 介面邏輯
@@ -129,7 +188,7 @@ def check_answer(selected_option):
         }
         log_mistake(target)
         # 答錯時播放正確答案
-        st.session_state.audio_to_play = f"哎呀答錯了，正確答案是 {target['char']}"
+        st.session_state.audio_to_play = f"{target['char']}"
 
 def main():
     st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
@@ -282,12 +341,8 @@ def main():
             
             # Play Audio if available
             if st.session_state.audio_to_play:
-                # audio_to_play now holds the file path
-                if os.path.exists(st.session_state.audio_to_play):
-                    st.audio(st.session_state.audio_to_play, format='audio/mp3', autoplay=True)
-                else:
-                    st.warning(f"Audio file not found: {st.session_state.audio_to_play}")
-                
+                # audio_to_play now holds the text to speak
+                speak_text(st.session_state.audio_to_play)
                 # Clear it so it doesn't replay on manual rerun
                 st.session_state.audio_to_play = None
 
