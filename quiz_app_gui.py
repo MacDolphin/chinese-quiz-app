@@ -53,7 +53,8 @@ def load_vocabulary(filename):
                     # 使用 char 當作 key，這樣重複的字就會被覆蓋，達到去重效果
                     vocab_dict[clean_row['char']] = {
                         'char': clean_row['char'],
-                        'zhuyin': clean_row['zhuyin']
+                        'zhuyin': clean_row['zhuyin'],
+                        'book': clean_row.get('book', '未分類') # 預設為 '未分類'
                     }
         
         # 將字典轉回列表
@@ -305,21 +306,42 @@ def main():
     if st.session_state.game_mode is None:
         st.header("請選擇模式")
         
+        # 預先讀取題庫以獲取冊別資訊
+        full_db = load_vocabulary(VOCAB_FILE)
+        
+        # 取得所有不重複的冊別
+        all_books = sorted(list(set(item['book'] for item in full_db)))
+        
+        selected_books = all_books
+        # 如果有分類（不只是'未分類'），顯示篩選器
+        if len(all_books) > 1 or (len(all_books) == 1 and all_books[0] != '未分類'):
+             st.subheader("📚 選擇範圍")
+             selected_books = st.multiselect(
+                 "請選擇要練習的冊別 (可多選)",
+                 all_books,
+                 default=all_books
+             )
+        
+        st.divider()
+
         col1, col2 = st.columns(2)
         
         with col1:
             if st.button("📖 一般練習", use_container_width=True):
-                db = load_vocabulary(VOCAB_FILE)
-                if not db:
+                if not full_db:
                     st.error("⚠️ 找不到題庫檔案，請確認 vocabulary.csv 存在。")
-                elif len(db) < 3:
-                    st.warning("⚠️ 題庫生字少於 3 個，無法開始遊戲。")
                 else:
-                    st.session_state.db = db
-                    st.session_state.game_mode = 'general'
-                    reset_game()
-                    next_question()
-                    st.rerun()
+                    # 根據選擇的冊別過濾
+                    filtered_db = [item for item in full_db if item['book'] in selected_books]
+                    
+                    if len(filtered_db) < 3:
+                        st.warning(f"⚠️ 選擇範圍內的生字少於 3 個 (共 {len(filtered_db)} 個)，無法開始遊戲。")
+                    else:
+                        st.session_state.db = filtered_db
+                        st.session_state.game_mode = 'general'
+                        reset_game()
+                        next_question()
+                        st.rerun()
 
         with col2:
             if st.button("🔧 錯題複習", use_container_width=True):
