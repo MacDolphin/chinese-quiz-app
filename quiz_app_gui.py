@@ -123,11 +123,23 @@ async def get_edge_tts_audio(text, voice="zh-TW-HsiaoChenNeural", rate="+20%"):
 def generate_audio_bytes(text):
     """包裝非同步函式供 Streamlit 同步呼叫"""
     try:
-        # With nest_asyncio, we can simply use asyncio.run()
-        return asyncio.run(get_edge_tts_audio(text))
+        # 使用現有的 loop，避免 asyncio.run() 建立新 loop 可能導致的問題
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        return loop.run_until_complete(get_edge_tts_audio(text))
     except Exception as e:
-        st.error(f"Audio generation failed: {e}")
-        return None
+        st.warning(f"Audio generation failed with rate adjustment, retrying normal speed... ({e})")
+        try:
+            # Fallback: Try without rate adjustment
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(get_edge_tts_audio(text, rate="+0%"))
+        except Exception as e2:
+            st.error(f"Audio generation failed: {e2}")
+            return None
 
 # ==========================================
 # Streamlit 介面邏輯
