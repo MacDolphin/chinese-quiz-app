@@ -108,14 +108,26 @@ def get_question(db):
     
     return target, options, mode
 
-def get_google_tts_url(text):
-    """生成 Google Translate TTS 的音頻 URL"""
+def get_audio_bytes_from_google_tts(text):
+    """從 Google Translate TTS 下載音頻字節"""
+    import requests
     from urllib.parse import quote
-    # Google Translate TTS API
-    # tl=zh-TW 代表台灣中文
-    encoded_text = quote(text)
-    url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-TW&client=tw-ob&q={encoded_text}"
-    return url
+    
+    try:
+        encoded_text = quote(text)
+        url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-TW&client=tw-ob&q={encoded_text}"
+        
+        # 添加 User-Agent 避免被阻擋
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response = requests.get(url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            return response.content
+        else:
+            return None
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        return None
 
 # ==========================================
 # Streamlit 介面邏輯
@@ -347,10 +359,15 @@ def main():
                     next_question()
                     st.rerun()
             
-            # 如果用戶點擊了「聽讀音」，顯示音頻播放器
+            # 如果用戶點擊了「聽讀音」，下載並播放音頻
             if st.session_state.show_audio_player and st.session_state.char_to_speak:
-                audio_url = get_google_tts_url(st.session_state.char_to_speak)
-                st.audio(audio_url, format='audio/mp3')
+                with st.spinner('載入語音中...'):
+                    audio_bytes = get_audio_bytes_from_google_tts(st.session_state.char_to_speak)
+                
+                if audio_bytes:
+                    st.audio(audio_bytes, format='audio/mp3')
+                else:
+                    st.warning("⚠️ 語音載入失敗，請稍後再試")
         else:
             # Show Options
             cols = st.columns(3)
