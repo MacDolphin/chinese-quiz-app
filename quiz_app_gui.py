@@ -309,18 +309,49 @@ def main():
         # 預先讀取題庫以獲取冊別資訊
         full_db = load_vocabulary(VOCAB_FILE)
         
-        # 取得所有不重複的冊別
-        all_books = sorted(list(set(item['book'] for item in full_db)))
+        # 自定義排序函式 (讓第一冊、第二冊...依序排列)
+        def book_sort_key(book_name):
+            cn_map = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10}
+            try:
+                if book_name.startswith("第") and book_name.endswith("冊"):
+                    num_str = book_name[1:-1]
+                    if num_str in cn_map:
+                        return cn_map[num_str]
+            except:
+                pass
+            return 100 # 其他放在最後
+
+        # 取得所有不重複的冊別並排序
+        all_books = sorted(list(set(item['book'] for item in full_db)), key=book_sort_key)
         
-        selected_books = all_books
-        # 如果有分類（不只是'未分類'），顯示篩選器
+        # 初始化選擇狀態
+        if 'selected_books' not in st.session_state:
+            st.session_state.selected_books = []
+
+        # 如果有分類（不只是'未分類'），顯示按鈕篩選器
         if len(all_books) > 1 or (len(all_books) == 1 and all_books[0] != '未分類'):
              st.subheader("📚 選擇範圍")
-             selected_books = st.multiselect(
-                 "請選擇要練習的冊別 (可多選)",
-                 all_books,
-                 default=all_books
-             )
+             st.caption("請點擊按鈕選擇要練習的冊別（可多選）：")
+             
+             # 使用 columns 排列按鈕
+             cols = st.columns(3) # 一行3個
+             for i, book in enumerate(all_books):
+                 col = cols[i % 3]
+                 is_selected = book in st.session_state.selected_books
+                 
+                 if is_selected:
+                     # 已選中：顯示為 Primary 顏色，點擊後取消
+                     if col.button(f"✅ {book}", key=f"btn_{book}", type="primary", use_container_width=True):
+                         st.session_state.selected_books.remove(book)
+                         st.rerun()
+                 else:
+                     # 未選中：顯示為一般顏色，點擊後加入
+                     if col.button(f"{book}", key=f"btn_{book}", use_container_width=True):
+                         st.session_state.selected_books.append(book)
+                         st.rerun()
+        else:
+            # 如果沒有分類，預設全選
+            st.session_state.selected_books = all_books
         
         st.divider()
 
@@ -330,9 +361,11 @@ def main():
             if st.button("📖 一般練習", use_container_width=True):
                 if not full_db:
                     st.error("⚠️ 找不到題庫檔案，請確認 vocabulary.csv 存在。")
+                elif not st.session_state.selected_books:
+                    st.warning("⚠️ 請至少選擇一冊來進行練習！")
                 else:
                     # 根據選擇的冊別過濾
-                    filtered_db = [item for item in full_db if item['book'] in selected_books]
+                    filtered_db = [item for item in full_db if item['book'] in st.session_state.selected_books]
                     
                     if len(filtered_db) < 3:
                         st.warning(f"⚠️ 選擇範圍內的生字少於 3 個 (共 {len(filtered_db)} 個)，無法開始遊戲。")
