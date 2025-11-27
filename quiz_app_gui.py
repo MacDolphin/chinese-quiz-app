@@ -108,29 +108,14 @@ def get_question(db):
     
     return target, options, mode
 
-def speak_character(char):
-    """使用瀏覽器語音朗讀文字（在電腦上有效，移動裝置上靜默跳過）"""
-    import streamlit.components.v1 as components
-    
-    # 清理文字，避免 JavaScript 注入
-    safe_char = char.replace('"', '\\"').replace("'", "\\'")
-    
-    html_code = f"""
-    <script>
-        (function() {{
-            try {{
-                const utterance = new SpeechSynthesisUtterance("{safe_char}");
-                utterance.lang = 'zh-TW';
-                utterance.rate = 1.0;
-                speechSynthesis.speak(utterance);
-            }} catch(e) {{
-                // 靜默失敗（移動裝置可能不支援）
-                console.log('Speech synthesis not available');
-            }}
-        }})();
-    </script>
-    """
-    components.html(html_code, height=0)
+def get_google_tts_url(text):
+    """生成 Google Translate TTS 的音頻 URL"""
+    from urllib.parse import quote
+    # Google Translate TTS API
+    # tl=zh-TW 代表台灣中文
+    encoded_text = quote(text)
+    url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-TW&client=tw-ob&q={encoded_text}"
+    return url
 
 # ==========================================
 # Streamlit 介面邏輯
@@ -155,6 +140,8 @@ def init_session_state():
         st.session_state.db = []
     if 'char_to_speak' not in st.session_state:
         st.session_state.char_to_speak = None
+    if 'show_audio_player' not in st.session_state:
+        st.session_state.show_audio_player = False
 
 def reset_game():
     st.session_state.current_question = None
@@ -162,6 +149,7 @@ def reset_game():
     st.session_state.total_answered = 0
     st.session_state.feedback = None
     st.session_state.char_to_speak = None
+    st.session_state.show_audio_player = False
 
 def next_question():
     target, options, mode = get_question(st.session_state.db)
@@ -172,6 +160,7 @@ def next_question():
     }
     st.session_state.feedback = None
     st.session_state.char_to_speak = None
+    st.session_state.show_audio_player = False
 
 def check_answer(selected_option):
     target = st.session_state.current_question['target']
@@ -344,14 +333,24 @@ def main():
             else:
                 st.error(st.session_state.feedback['msg'], icon="❌")
             
-            # 朗讀正確答案（在電腦上有效，移動裝置上靜默跳過）
-            if st.session_state.char_to_speak:
-                speak_character(st.session_state.char_to_speak)
-                st.session_state.char_to_speak = None
-
-            if st.button("下一題 ➡️", type="primary", use_container_width=True):
-                next_question()
-                st.rerun()
+            # 顯示「聽讀音」按鈕
+            col_audio, col_next = st.columns([1, 2])
+            
+            with col_audio:
+                if st.session_state.char_to_speak:
+                    if st.button("🔊 聽讀音", use_container_width=True, type="secondary"):
+                        st.session_state.show_audio_player = True
+                        st.rerun()
+            
+            with col_next:
+                if st.button("下一題 ➡️", type="primary", use_container_width=True):
+                    next_question()
+                    st.rerun()
+            
+            # 如果用戶點擊了「聽讀音」，顯示音頻播放器
+            if st.session_state.show_audio_player and st.session_state.char_to_speak:
+                audio_url = get_google_tts_url(st.session_state.char_to_speak)
+                st.audio(audio_url, format='audio/mp3')
         else:
             # Show Options
             cols = st.columns(3)
