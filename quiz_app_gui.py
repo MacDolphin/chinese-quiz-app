@@ -123,16 +123,10 @@ async def get_edge_tts_audio(text, voice="zh-TW-HsiaoChenNeural", rate="+20%"):
 def generate_audio_bytes(text):
     """包裝非同步函式供 Streamlit 同步呼叫"""
     try:
-        # Create a new loop for this thread if needed, or use existing
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-        return loop.run_until_complete(get_edge_tts_audio(text))
+        # With nest_asyncio, we can simply use asyncio.run()
+        return asyncio.run(get_edge_tts_audio(text))
     except Exception as e:
-        print(f"Audio generation failed: {e}")
+        st.error(f"Audio generation failed: {e}")
         return None
 
 # ==========================================
