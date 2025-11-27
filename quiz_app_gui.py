@@ -129,6 +129,38 @@ def get_audio_bytes_from_google_tts(text):
         print(f"TTS Error: {e}")
         return None
 
+def play_audio_with_javascript(text):
+    """使用 JavaScript 直接播放音頻（iOS 相容）"""
+    import streamlit.components.v1 as components
+    import base64
+    
+    # 獲取音頻字節
+    audio_bytes = get_audio_bytes_from_google_tts(text)
+    
+    if not audio_bytes:
+        st.warning("⚠️ 語音載入失敗")
+        return
+    
+    # 轉換為 base64
+    audio_base64 = base64.b64encode(audio_bytes).decode()
+    
+    # 使用 HTML5 Audio API 播放
+    html_code = f"""
+    <div style="text-align: center; padding: 10px;">
+        <audio id="audioPlayer" controls autoplay style="width: 100%; max-width: 500px;">
+            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            您的瀏覽器不支援音頻播放
+        </audio>
+    </div>
+    <script>
+        // 確保音頻能在 iOS 上播放
+        const audio = document.getElementById('audioPlayer');
+        audio.play().catch(e => console.log('Autoplay prevented:', e));
+    </script>
+    """
+    
+    components.html(html_code, height=80)
+
 # ==========================================
 # Streamlit 介面邏輯
 # ==========================================
@@ -359,15 +391,10 @@ def main():
                     next_question()
                     st.rerun()
             
-            # 如果用戶點擊了「聽讀音」，下載並播放音頻
+            # 如果用戶點擊了「聽讀音」，使用 JavaScript 直接播放
             if st.session_state.show_audio_player and st.session_state.char_to_speak:
                 with st.spinner('載入語音中...'):
-                    audio_bytes = get_audio_bytes_from_google_tts(st.session_state.char_to_speak)
-                
-                if audio_bytes:
-                    st.audio(audio_bytes, format='audio/mp3')
-                else:
-                    st.warning("⚠️ 語音載入失敗，請稍後再試")
+                    play_audio_with_javascript(st.session_state.char_to_speak)
         else:
             # Show Options
             cols = st.columns(3)
