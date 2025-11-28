@@ -471,6 +471,16 @@ def main():
             
         q = st.session_state.current_question
         
+        # 如果沒有題目了 (例如錯題都練完了)
+        if q['target'] is None:
+            st.balloons()
+            st.success("🎉 太棒了！你已經完成了所有練習！")
+            if st.button("🏠 回主選單", type="primary", use_container_width=True):
+                st.session_state.game_mode = None
+                reset_game()
+                st.rerun()
+            return # 結束函式，不繼續渲染
+
         # Display Question
         st.divider()
         if q['mode'] == 1:
