@@ -109,7 +109,7 @@ def remove_mistake(target):
     except Exception as e:
         print(f"Error removing mistake: {e}")
 
-def get_question(db):
+def get_question(db, full_db=None):
     """從題庫中隨機產生題目"""
     if not db:
         return None, None, None
@@ -118,11 +118,24 @@ def get_question(db):
     options = [target]
     
     # 隨機選出錯誤選項 (干擾項)
+    # 優先從目前的 db 選，如果不夠則從 full_db 選
     max_attempts = 100 
     attempts = 0
+    
+    # 決定要從哪個池子選干擾項
+    # 如果 db 夠大 (>=3)，優先從 db 選，增加混淆度
+    # 如果 db 太小 (<3)，必須從 full_db 補
+    source_db = db
+    if len(db) < 3:
+        if full_db and len(full_db) >= 3:
+            source_db = full_db
+        else:
+            # 如果連 full_db 都不夠 (極端情況)，就只能盡量選
+            pass
+
     while len(options) < 3 and attempts < max_attempts:
-        distractor = random.choice(db)
-        if distractor != target and distractor not in options:
+        distractor = random.choice(source_db)
+        if distractor['char'] != target['char'] and distractor not in options:
             options.append(distractor)
         attempts += 1
     
@@ -221,7 +234,10 @@ def reset_game():
     st.session_state.show_audio_player = False
 
 def next_question():
-    target, options, mode = get_question(st.session_state.db)
+    # 讀取完整題庫以供干擾項使用 (如果尚未讀取)
+    full_db = load_vocabulary(VOCAB_FILE)
+    
+    target, options, mode = get_question(st.session_state.db, full_db)
     st.session_state.current_question = {
         'target': target,
         'options': options,
@@ -251,7 +267,7 @@ def check_answer(selected_option):
             st.session_state.db = [item for item in st.session_state.db if item['char'] != target['char']]
             
             # 如果錯題都練完了
-            if len(st.session_state.db) < 3 and len(st.session_state.db) > 0:
+            if len(st.session_state.db) == 0:
                  # 剩下的字太少，無法繼續出題 (因為選項需要3個干擾項? 其實選項是從 full_db 抓的嗎？)
                  # get_question 的選項是從傳入的 db 抓的。
                  # 如果 db 變少，選項可能會不夠。
