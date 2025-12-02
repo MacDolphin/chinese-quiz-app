@@ -225,6 +225,24 @@ def init_session_state():
     if 'show_audio_player' not in st.session_state:
         st.session_state.show_audio_player = False
 
+    # Adventure Mode State
+    if 'monster_hp' not in st.session_state:
+        st.session_state.monster_hp = 100
+    if 'player_hp' not in st.session_state:
+        st.session_state.player_hp = 3
+    if 'current_monster' not in st.session_state:
+        st.session_state.current_monster = None
+
+    # Memory Match State
+    if 'memory_cards' not in st.session_state:
+        st.session_state.memory_cards = []
+    if 'flipped_indices' not in st.session_state:
+        st.session_state.flipped_indices = []
+    if 'memory_solved' not in st.session_state:
+        st.session_state.memory_solved = False
+    
+
+
 def reset_game():
     st.session_state.current_question = None
     st.session_state.score = 0
@@ -232,6 +250,16 @@ def reset_game():
     st.session_state.feedback = None
     st.session_state.char_to_speak = None
     st.session_state.show_audio_player = False
+
+    # Reset Adventure Mode
+    st.session_state.monster_hp = 100
+    st.session_state.player_hp = 3
+    st.session_state.current_monster = random.choice(["🦖", "👾", "🐉", "🧟", "🧛", "🦈", "🦍", "🕷️"])
+
+    # Reset Memory Match
+    st.session_state.memory_cards = []
+    st.session_state.flipped_indices = []
+    st.session_state.memory_solved = False
 
 def next_question():
     # 讀取完整題庫以供干擾項使用 (如果尚未讀取)
@@ -284,9 +312,56 @@ def check_answer(selected_option):
             'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
         }
         log_mistake(target)
+        
+        # Adventure Mode Logic
+        if st.session_state.game_mode == 'adventure':
+            st.session_state.player_hp -= 1
+    
+    # Adventure Mode Logic (Correct Answer)
+    if selected_option == target and st.session_state.game_mode == 'adventure':
+        damage = 20
+        st.session_state.monster_hp -= damage
+        if st.session_state.monster_hp < 0:
+            st.session_state.monster_hp = 0
     
     # 無論答對或答錯，都朗讀正確答案（該字的讀音）
     st.session_state.char_to_speak = target['char']
+
+def init_memory_game(db):
+    # Select 6 words (for 4x3 grid)
+    num_pairs = 6
+    if len(db) < num_pairs:
+        selected_words = db
+        # If less than 6, duplicate some to fill grid? Or just have smaller grid?
+        # For now, just use what we have, grid might be smaller.
+    else:
+        selected_words = random.sample(db, num_pairs)
+    
+    cards = []
+    for i, word in enumerate(selected_words):
+        # Card 1: Char
+        cards.append({
+            'id': i * 2,
+            'content': word['char'],
+            'type': 'char',
+            'pair_id': i,
+            'is_matched': False,
+            'is_flipped': False
+        })
+        # Card 2: Zhuyin
+        cards.append({
+            'id': i * 2 + 1,
+            'content': word['zhuyin'],
+            'type': 'zhuyin',
+            'pair_id': i,
+            'is_matched': False,
+            'is_flipped': False
+        })
+    
+    random.shuffle(cards)
+    st.session_state.memory_cards = cards
+    st.session_state.flipped_indices = []
+    st.session_state.memory_solved = False
 
 def main():
     st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
@@ -414,7 +489,7 @@ def main():
         
         st.divider()
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             if st.button("📖 一般練習", use_container_width=True):
@@ -436,6 +511,23 @@ def main():
                         st.rerun()
 
         with col2:
+            if st.button("⚔️ 勇者闖關", use_container_width=True):
+                if not full_db:
+                    st.error("⚠️ 找不到題庫檔案")
+                elif not st.session_state.selected_books:
+                    st.warning("⚠️ 請至少選擇一冊！")
+                else:
+                    filtered_db = [item for item in full_db if item['book'] in st.session_state.selected_books]
+                    if len(filtered_db) < 3:
+                        st.warning("⚠️ 生字不足 3 個")
+                    else:
+                        st.session_state.db = filtered_db
+                        st.session_state.game_mode = 'adventure'
+                        reset_game()
+                        next_question()
+                        st.rerun()
+
+        with col3:
             if st.button("🔧 錯題複習", use_container_width=True):
                 if not os.path.exists(ERROR_LOG_FILE):
                     st.warning("⚠️ 目前還沒有錯題紀錄喔！")
@@ -452,12 +544,10 @@ def main():
                         char_to_book = {item['char']: item['book'] for item in full_db}
                         
                         # 過濾錯題：只保留在「已選冊別」中的字
-                        # 注意：如果錯題本裡的字在主題庫找不到（例如被刪除了），預設歸類為 '未分類'
                         filtered_mistakes = []
                         for item in mistakes_db:
                             book = char_to_book.get(item['char'], '未分類')
                             if book in st.session_state.selected_books:
-                                # 把冊別資訊補進去 (雖然遊戲中可能用不到，但保持資料完整)
                                 item['book'] = book
                                 filtered_mistakes.append(item)
                         
@@ -470,13 +560,150 @@ def main():
                             next_question()
                             st.rerun()
 
+        st.divider()
+        col4, col5 = st.columns(2)
+        with col4:
+            if st.button("🧩 翻牌配對", use_container_width=True):
+                if not full_db:
+                    st.error("⚠️ 找不到題庫檔案")
+                elif not st.session_state.selected_books:
+                    st.warning("⚠️ 請至少選擇一冊！")
+                else:
+                    filtered_db = [item for item in full_db if item['book'] in st.session_state.selected_books]
+                    if len(filtered_db) < 2:
+                        st.warning("⚠️ 生字不足 2 個")
+                    else:
+                        st.session_state.db = filtered_db
+                        st.session_state.game_mode = 'memory'
+                        reset_game()
+                        init_memory_game(st.session_state.db)
+                        st.rerun()
+
     # Game Interface
-    elif st.session_state.game_mode in ['general', 'review']:
+    elif st.session_state.game_mode in ['general', 'review', 'adventure', 'memory']:
+        
+        # Memory Match UI
+        if st.session_state.game_mode == 'memory':
+            st.subheader("🧩 翻牌配對")
+            
+            if st.session_state.memory_solved:
+                st.balloons()
+                st.success("🎉 恭喜！你完成了配對！")
+                if st.button("🔄 再玩一次", type="primary"):
+                    reset_game()
+                    init_memory_game(st.session_state.db)
+                    st.rerun()
+                if st.button("🏠 回主選單"):
+                    st.session_state.game_mode = None
+                    reset_game()
+                    st.rerun()
+                return
+
+            # Grid Layout
+            # We have 12 cards (6 pairs). 4 columns x 3 rows.
+            cols = st.columns(4)
+            for i, card in enumerate(st.session_state.memory_cards):
+                col = cols[i % 4]
+                
+                # Determine button label and state
+                if card['is_matched']:
+                    # Matched: Invisible or disabled
+                    col.button("✅", key=f"card_{i}", disabled=True)
+                elif card['is_flipped'] or i in st.session_state.flipped_indices:
+                    # Flipped: Show content
+                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary")
+                else:
+                    # Hidden: Show Back
+                    if col.button("❓", key=f"card_{i}"):
+                        # Handle Click
+                        if len(st.session_state.flipped_indices) < 2:
+                            st.session_state.flipped_indices.append(i)
+                            
+                            # Check for match if 2 cards flipped
+                            if len(st.session_state.flipped_indices) == 2:
+                                idx1 = st.session_state.flipped_indices[0]
+                                idx2 = st.session_state.flipped_indices[1]
+                                card1 = st.session_state.memory_cards[idx1]
+                                card2 = st.session_state.memory_cards[idx2]
+                                
+                                if card1['pair_id'] == card2['pair_id']:
+                                    # Match!
+                                    st.session_state.memory_cards[idx1]['is_matched'] = True
+                                    st.session_state.memory_cards[idx2]['is_matched'] = True
+                                    st.toast("✨ 配對成功！", icon="🎉")
+                                    st.session_state.flipped_indices = []
+                                    
+                                    # Check win
+                                    if all(c['is_matched'] for c in st.session_state.memory_cards):
+                                        st.session_state.memory_solved = True
+                                else:
+                                    # No match
+                                    st.toast("❌ 配對失敗，請再試一次", icon="⚠️")
+                                    # We need to let the user see the second card before flipping back.
+                                    # But Streamlit reruns immediately.
+                                    # We can use a state to show "Mismatch" and a button to "Continue"?
+                                    # Or just rely on the user remembering?
+                                    # For simplicity: Keep them flipped until next click? 
+                                    # No, that's complex.
+                                    # Let's just clear flipped_indices on next interaction if > 2?
+                                    # Or use a "Continue" button if mismatch?
+                                    pass
+                        
+                        # If we have 2 flipped and they are NOT matched (from previous turn logic?), 
+                        # we need to reset them. But here we just appended.
+                        # Actually, if we just appended the 2nd card, we checked match.
+                        # If match -> cleared.
+                        # If no match -> they are still in flipped_indices.
+                        # So next render, they will be shown.
+                        # BUT, if user clicks a 3rd card, we should reset the previous 2.
+                        
+                        st.rerun()
+            
+            # If 2 cards are flipped and NOT matched, show a button to reset them
+            if len(st.session_state.flipped_indices) == 2:
+                 if st.button("➡️ 繼續 (蓋牌)", type="primary", use_container_width=True):
+                     st.session_state.flipped_indices = []
+                     st.rerun()
+            
+            return # End Memory Mode UI
+
+        # Adventure Mode UI Header
+        if st.session_state.game_mode == 'adventure':
+            col_p, col_m = st.columns(2)
+            with col_p:
+                st.markdown(f"### 🛡️ 勇者血量: {'❤️' * st.session_state.player_hp}")
+                if st.session_state.player_hp <= 0:
+                    st.error("💀 你被打敗了！請再接再厲！")
+                    if st.button("🔄 重新挑戰", type="primary"):
+                        reset_game()
+                        st.rerun()
+                    if st.button("🏠 回主選單"):
+                        st.session_state.game_mode = None
+                        reset_game()
+                        st.rerun()
+                    return
+
+            with col_m:
+                st.markdown(f"### {st.session_state.current_monster} 怪獸血量: {st.session_state.monster_hp}/100")
+                st.progress(st.session_state.monster_hp / 100)
+                if st.session_state.monster_hp <= 0:
+                    st.balloons()
+                    st.success("🎉 恭喜！你打敗了怪獸！")
+                    if st.button("⚔️ 挑戰下一隻", type="primary"):
+                        reset_game() # Reset HP and Monster
+                        next_question()
+                        st.rerun()
+                    if st.button("🏠 回主選單"):
+                        st.session_state.game_mode = None
+                        reset_game()
+                        st.rerun()
+                    return
         
         # Display Score
         col_score1, col_score2 = st.columns([3, 1])
         with col_score1:
-            st.caption(f"目前模式: {'一般練習' if st.session_state.game_mode == 'general' else '錯題複習'}")
+            mode_map = {'general': '一般練習', 'review': '錯題複習', 'adventure': '勇者闖關', 'memory': '翻牌配對'}
+            st.caption(f"目前模式: {mode_map.get(st.session_state.game_mode, '未知模式')}")
         with col_score2:
             st.metric("得分", f"{st.session_state.score} / {st.session_state.total_answered}")
         
