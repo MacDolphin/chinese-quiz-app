@@ -1,5 +1,5 @@
 /* 全局按鈕樣式調整 */
-div.stButton > button {
+div.stButton>button {
     font-size: 28px !important;
     height: 80px !important;
     border-radius: 15px !important;
@@ -10,7 +10,7 @@ div.stButton > button {
 }
 
 /* 滑鼠懸停效果 */
-div.stButton > button:hover {
+div.stButton>button:hover {
     border-color: #4CAF50 !important;
     color: #4CAF50 !important;
     background-color: #f9fff9 !important;
@@ -45,4 +45,14 @@ div.stButton > button:hover {
     border-radius: 20px;
     border: 3px dashed #ffcccb;
     margin-bottom: 20px;
+}
+
+/* 記憶遊戲卡牌樣式 */
+.memory-card-button button {
+    min-width: 180px !important;
+    /* 卡牌寬度增加到 3 倍 */
+    font-size: 48px !important;
+    /* 字體放大 */
+    height: 100px !important;
+    /* 高度增加 */
 }

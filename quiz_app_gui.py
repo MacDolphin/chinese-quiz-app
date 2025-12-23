@@ -17,8 +17,8 @@ ENCODING_TYPE = 'utf-8-sig'        # 編碼設定
 MIN_WORDS_FOR_QUIZ = 3          # 最少需要的生字數量
 NUM_OPTIONS = 3                  # 選項數量
 MAX_DISTRACTOR_ATTEMPTS = 100   # 尋找干擾項的最大嘗試次數
-MEMORY_GAME_PAIRS = 6           # 記憶遊戲的配對數量
-MEMORY_GAME_COLUMNS = 4         # 記憶遊戲的欄位數
+MEMORY_GAME_PAIRS = 15          # 記憶遊戲的配對數量（15 組 = 30 張卡牌）
+MEMORY_GAME_COLUMNS = 6         # 記憶遊戲的欄位數（6 欄 × 5 列）
 
 # 冒險模式設定
 INITIAL_MONSTER_HP = 100
@@ -736,8 +736,8 @@ def main() -> None:
                     # Flipped: Show content
                     col.button(card['content'], key=f"card_{i}", disabled=True, type="primary")
                 else:
-                    # Hidden: Show Back
-                    if col.button("❓", key=f"card_{i}"):
+                    # Hidden: Show Back (使用可愛圖案)
+                    if col.button("🎴", key=f"card_{i}"):
                         # 翻牌時自動播放發音（只播放字卡，不播放注音卡）
                         card = st.session_state.memory_cards[i]
                         if card['type'] == 'char':
