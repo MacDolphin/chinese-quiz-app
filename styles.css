@@ -7,8 +7,6 @@ div.stButton>button {
     background-color: #ffffff;
     color: #333333;
     transition: all 0.3s ease;
-    min-width: 540px !important;
-    /* 所有按鈕寬度設為 540px */
 }
 
 /* 滑鼠懸停效果 */

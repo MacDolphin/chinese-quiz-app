@@ -723,8 +723,21 @@ def main() -> None:
                 return
 
             # Grid Layout
-            # We have 12 cards (6 pairs). 4 columns x 3 rows.
+            # We have 30 cards (15 pairs). 6 columns x 5 rows.
             cols = st.columns(MEMORY_GAME_COLUMNS)
+            
+            # 為記憶遊戲卡牌設定特殊樣式
+            st.markdown("""
+            <style>
+            /* 只針對記憶遊戲的按鈕 */
+            div[data-testid="column"] > div > div > div > div.stButton > button {
+                min-width: 540px !important;
+                font-size: 48px !important;
+                height: 100px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             for i, card in enumerate(st.session_state.memory_cards):
                 col = cols[i % MEMORY_GAME_COLUMNS]
                 
