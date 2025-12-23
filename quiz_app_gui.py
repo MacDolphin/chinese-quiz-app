@@ -2,6 +2,7 @@ import streamlit as st
 import random
 import csv
 import os
+import logging
 from datetime import datetime
 
 # ==========================================
@@ -23,6 +24,16 @@ INITIAL_MONSTER_HP = 100
 INITIAL_PLAYER_HP = 3
 DAMAGE_PER_CORRECT = 20
 MONSTERS = ["🦖", "👾", "🐉", "🧟", "🧛", "🦈", "🦍", "🕷️"]
+
+# 設定日誌
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('quiz_app.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
 
 # 正向回饋語句庫 (擴充版) - 必須與 generate_audio_assets.py 一致
 praises = [
@@ -74,6 +85,7 @@ def load_vocabulary(filename):
         return list(vocab_dict.values())
         
     except Exception as e:
+        logging.error(f"讀取檔案 {filename} 時發生錯誤: {e}")
         st.error(f"❌ 讀取檔案 {filename} 時發生錯誤: {e}")
         return []
 
@@ -96,7 +108,8 @@ def log_mistake(word_data):
             })
             
     except Exception as e:
-        print(f"Error logging mistake: {e}")
+        logging.error(f"記錄錯題時發生錯誤: {e}")
+        st.error("❌ 錯題記錄失敗，請檢查檔案權限")
 
 def remove_mistake(target):
     """從錯題本中移除答對的字"""
@@ -120,7 +133,62 @@ def remove_mistake(target):
             writer.writerows(rows)
             
     except Exception as e:
-        print(f"Error removing mistake: {e}")
+        logging.error(f"移除錯題時發生錯誤: {e}")
+        st.error("❌ 移除錯題失敗")
+
+def load_mistakes_cache():
+    """載入錯題本快取（如果尚未載入）"""
+    if st.session_state.mistakes_cache is None:
+        if os.path.exists(ERROR_LOG_FILE):
+            st.session_state.mistakes_cache = load_vocabulary(ERROR_LOG_FILE)
+        else:
+            st.session_state.mistakes_cache = []
+    return st.session_state.mistakes_cache
+
+def save_mistakes_cache():
+    """將錯題本快取寫回檔案"""
+    if st.session_state.mistakes_cache is None:
+        return
+    
+    try:
+        with open(ERROR_LOG_FILE, mode='w', encoding=ENCODING_TYPE, newline='') as csvfile:
+            fieldnames = ['char', 'zhuyin']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for mistake in st.session_state.mistakes_cache:
+                writer.writerow({
+                    'char': mistake['char'],
+                    'zhuyin': mistake['zhuyin']
+                })
+        logging.info(f"錯題本已儲存，共 {len(st.session_state.mistakes_cache)} 筆")
+    except Exception as e:
+        logging.error(f"儲存錯題本時發生錯誤: {e}")
+        st.error("❌ 儲存錯題本失敗")
+
+def add_mistake_to_cache(word_data):
+    """將錯題加入快取（避免重複）"""
+    load_mistakes_cache()
+    
+    # 檢查是否已存在
+    if not any(m['char'] == word_data['char'] for m in st.session_state.mistakes_cache):
+        st.session_state.mistakes_cache.append({
+            'char': word_data['char'],
+            'zhuyin': word_data['zhuyin']
+        })
+        # 立即寫入檔案（保持向後相容）
+        log_mistake(word_data)
+
+def remove_mistake_from_cache(target):
+    """從快取中移除錯題"""
+    load_mistakes_cache()
+    
+    st.session_state.mistakes_cache = [
+        m for m in st.session_state.mistakes_cache 
+        if m['char'] != target['char']
+    ]
+    # 立即寫入檔案
+    save_mistakes_cache()
 
 def get_question(db, full_db=None):
     """從題庫中隨機產生題目"""
@@ -230,6 +298,7 @@ def init_session_state():
         'game_mode': None,  # 'general', 'review', 'adventure', 'memory' or None
         'db': [],
         'full_db': [],  # 完整題庫快取
+        'mistakes_cache': None,  # 錯題本快取
         'char_to_speak': None,
         'show_audio_player': False,
         'selected_books': [],
@@ -299,19 +368,11 @@ def check_answer(selected_option):
         
         # 如果是在錯題複習模式下答對，將該字從錯題本移除
         if st.session_state.game_mode == 'review':
-            remove_mistake(target)
+            remove_mistake_from_cache(target)
             msg += " (已從錯題本移除)"
             
-            # 更新當前的 db，避免下一題又抽到剛剛移除的字 (雖然機率低，但為了體驗)
+            # 更新當前的 db，避免下一題又抽到剛剛移除的字
             st.session_state.db = [item for item in st.session_state.db if item['char'] != target['char']]
-            
-            # 如果錯題都練完了
-            if len(st.session_state.db) == 0:
-                 # 剩下的字太少，無法繼續出題 (因為選項需要3個干擾項? 其實選項是從 full_db 抓的嗎？)
-                 # get_question 的選項是從傳入的 db 抓的。
-                 # 如果 db 變少，選項可能會不夠。
-                 # 這裡簡單處理：如果剩餘錯題太少，就提示完成
-                 pass
 
         st.session_state.feedback = {
             'type': 'success',
@@ -322,7 +383,7 @@ def check_answer(selected_option):
             'type': 'error',
             'msg': f"❌ 哎呀，正確答案是： {target['char']} {target['zhuyin']}"
         }
-        log_mistake(target)
+        add_mistake_to_cache(target)
         
         # Adventure Mode Logic
         if st.session_state.game_mode == 'adventure':
@@ -553,36 +614,36 @@ def main():
 
         with col3:
             if st.button("🔧 錯題複習", use_container_width=True):
-                if not os.path.exists(ERROR_LOG_FILE):
+                # 載入錯題本快取
+                mistakes_db = load_mistakes_cache()
+                
+                if not mistakes_db:
                     st.warning("⚠️ 目前還沒有錯題紀錄喔！")
                 elif not st.session_state.selected_books:
                     st.warning("⚠️ 請至少選擇一冊來進行複習！")
                 else:
-                    # 讀取錯題
-                    mistakes_db = load_vocabulary(ERROR_LOG_FILE)
+                    # 建立生字對應冊別的查表（從完整題庫中）
+                    if not st.session_state.full_db:
+                        st.session_state.full_db = load_vocabulary(VOCAB_FILE)
                     
-                    if not mistakes_db:
-                        st.warning("⚠️ 錯題檔案讀取失敗或內容為空。")
+                    char_to_book = {item['char']: item['book'] for item in st.session_state.full_db}
+                    
+                    # 過濾錯題：只保留在「已選冊別」中的字
+                    filtered_mistakes = []
+                    for item in mistakes_db:
+                        book = char_to_book.get(item['char'], '未分類')
+                        if book in st.session_state.selected_books:
+                            item['book'] = book
+                            filtered_mistakes.append(item)
+                    
+                    if len(filtered_mistakes) < MIN_WORDS_FOR_QUIZ:
+                        st.warning(f"⚠️ 選擇範圍內的錯題少於 {MIN_WORDS_FOR_QUIZ} 個 (共 {len(filtered_mistakes)} 個)，請先多練習累積錯題！")
                     else:
-                        # 建立生字對應冊別的查表 (從完整題庫中)
-                        char_to_book = {item['char']: item['book'] for item in full_db}
-                        
-                        # 過濾錯題：只保留在「已選冊別」中的字
-                        filtered_mistakes = []
-                        for item in mistakes_db:
-                            book = char_to_book.get(item['char'], '未分類')
-                            if book in st.session_state.selected_books:
-                                item['book'] = book
-                                filtered_mistakes.append(item)
-                        
-                        if len(filtered_mistakes) < 3:
-                            st.warning(f"⚠️ 選擇範圍內的錯題少於 3 個 (共 {len(filtered_mistakes)} 個)，請先多練習累積錯題！")
-                        else:
-                            st.session_state.db = filtered_mistakes
-                            st.session_state.game_mode = 'review'
-                            reset_game()
-                            next_question()
-                            st.rerun()
+                        st.session_state.db = filtered_mistakes
+                        st.session_state.game_mode = 'review'
+                        reset_game()
+                        next_question()
+                        st.rerun()
 
         st.divider()
         col4, col5 = st.columns(2)
