@@ -788,6 +788,11 @@ def main() -> None:
                         
                         st.rerun()
             
+            # 自動播放音頻（翻牌後）
+            if st.session_state.get('auto_play_audio', False) and st.session_state.char_to_speak:
+                play_audio_with_javascript(st.session_state.char_to_speak)
+                st.session_state.auto_play_audio = False
+            
             # If 2 cards are flipped and NOT matched, show a button to reset them
             if len(st.session_state.flipped_indices) == 2:
                  if st.button("➡️ 繼續 (蓋牌)", type="primary", use_container_width=True):
