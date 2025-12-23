@@ -374,14 +374,14 @@ def main():
     <style>
     /* 全局按鈕樣式調整 */
     div.stButton > button {
-        font-size: 28px !important;  /* 放大按鈕文字 */
-        height: 80px !important;     /* 增加按鈕高度 */
-        border-radius: 12px !important; /* 圓角 */
+        font-size: 48px !important;  /* 再次放大文字 (28px -> 48px) */
+        height: 160px !important;    /* 再次增加高度 (80px -> 160px) */
+        border-radius: 16px !important;
         border: 2px solid #e0e0e0;
         background-color: #ffffff;
         color: #333333;
         transition: all 0.3s ease;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1); /* 輕微陰影 */
+        box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
     }
     
     /* 滑鼠懸停效果 */
@@ -389,8 +389,8 @@ def main():
         border-color: #4CAF50 !important;
         color: #4CAF50 !important;
         background-color: #f9fff9 !important;
-        transform: translateY(-2px);
-        box-shadow: 4px 4px 10px rgba(0,0,0,0.15);
+        transform: translateY(-4px);
+        box-shadow: 6px 6px 15px rgba(0,0,0,0.2);
     }
 
     /* 針對主要選項按鈕的容器微調 */
@@ -424,10 +424,6 @@ def main():
     }
     
     /* 撲克牌樣式 (透過 Button 的特定樣式模擬) */
-    /* 注意：Streamlit 的按鈕無法直接加 class，我們只能依賴全域樣式或特定的位置 hack。
-       這裡稍微加強了全域按鈕的卡片感。
-       若要區分普通按鈕和卡片，可能只能靠 Context。
-       下面的 .stButton button p 是針對按鈕內的文字 */
     
     </style>
     """, unsafe_allow_html=True)
