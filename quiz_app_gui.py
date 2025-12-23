@@ -11,6 +11,19 @@ VOCAB_FILE = 'vocabulary.csv'      # 主要題庫
 ERROR_LOG_FILE = 'review_list.csv' # 錯題紀錄
 ENCODING_TYPE = 'utf-8-sig'        # 編碼設定
 
+# 遊戲設定常數
+MIN_WORDS_FOR_QUIZ = 3          # 最少需要的生字數量
+NUM_OPTIONS = 3                  # 選項數量
+MAX_DISTRACTOR_ATTEMPTS = 100   # 尋找干擾項的最大嘗試次數
+MEMORY_GAME_PAIRS = 6           # 記憶遊戲的配對數量
+MEMORY_GAME_COLUMNS = 4         # 記憶遊戲的欄位數
+
+# 冒險模式設定
+INITIAL_MONSTER_HP = 100
+INITIAL_PLAYER_HP = 3
+DAMAGE_PER_CORRECT = 20
+MONSTERS = ["🦖", "👾", "🐉", "🧟", "🧛", "🦈", "🦍", "🕷️"]
+
 # 正向回饋語句庫 (擴充版) - 必須與 generate_audio_assets.py 一致
 praises = [
     {"text": "太棒了！", "emoji": "🎉", "filename": "praise_01"},
@@ -119,21 +132,20 @@ def get_question(db, full_db=None):
     
     # 隨機選出錯誤選項 (干擾項)
     # 優先從目前的 db 選，如果不夠則從 full_db 選
-    max_attempts = 100 
     attempts = 0
     
     # 決定要從哪個池子選干擾項
     # 如果 db 夠大 (>=3)，優先從 db 選，增加混淆度
     # 如果 db 太小 (<3)，必須從 full_db 補
     source_db = db
-    if len(db) < 3:
-        if full_db and len(full_db) >= 3:
+    if len(db) < NUM_OPTIONS:
+        if full_db and len(full_db) >= NUM_OPTIONS:
             source_db = full_db
         else:
             # 如果連 full_db 都不夠 (極端情況)，就只能盡量選
             pass
 
-    while len(options) < 3 and attempts < max_attempts:
+    while len(options) < NUM_OPTIONS and attempts < MAX_DISTRACTOR_ATTEMPTS:
         distractor = random.choice(source_db)
         if distractor['char'] != target['char'] and distractor not in options:
             options.append(distractor)
@@ -208,56 +220,50 @@ def play_audio_with_javascript(text):
 # ==========================================
 
 def init_session_state():
-    if 'current_question' not in st.session_state:
-        st.session_state.current_question = None
-    if 'score' not in st.session_state:
-        st.session_state.score = 0
-    if 'total_answered' not in st.session_state:
-        st.session_state.total_answered = 0
-    if 'feedback' not in st.session_state:
-        st.session_state.feedback = None
-    if 'game_mode' not in st.session_state:
-        st.session_state.game_mode = None # 'general' or 'review' or None (Main Menu)
-    if 'db' not in st.session_state:
-        st.session_state.db = []
-    if 'char_to_speak' not in st.session_state:
-        st.session_state.char_to_speak = None
-    if 'show_audio_player' not in st.session_state:
-        st.session_state.show_audio_player = False
-    if 'auto_play_audio' not in st.session_state:
-        st.session_state.auto_play_audio = None  # New state for auto-playing audio across reruns
-
-    # Adventure Mode State
-    if 'monster_hp' not in st.session_state:
-        st.session_state.monster_hp = 100
-    if 'player_hp' not in st.session_state:
-        st.session_state.player_hp = 3
-    if 'current_monster' not in st.session_state:
-        st.session_state.current_monster = None
-
-    # Memory Match State
-    if 'memory_cards' not in st.session_state:
-        st.session_state.memory_cards = []
-    if 'flipped_indices' not in st.session_state:
-        st.session_state.flipped_indices = []
-    if 'memory_solved' not in st.session_state:
-        st.session_state.memory_solved = False
+    """初始化所有 session state 變數（使用字典方式提升效率）"""
+    defaults = {
+        # 基本遊戲狀態
+        'current_question': None,
+        'score': 0,
+        'total_answered': 0,
+        'feedback': None,
+        'game_mode': None,  # 'general', 'review', 'adventure', 'memory' or None
+        'db': [],
+        'full_db': [],  # 完整題庫快取
+        'char_to_speak': None,
+        'show_audio_player': False,
+        'selected_books': [],
+        
+        # 冒險模式狀態
+        'monster_hp': INITIAL_MONSTER_HP,
+        'player_hp': INITIAL_PLAYER_HP,
+        'current_monster': None,
+        
+        # 記憶配對遊戲狀態
+        'memory_cards': [],
+        'flipped_indices': [],
+        'memory_solved': False,
+    }
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
     
 
 
 def reset_game():
+    """重置遊戲狀態"""
     st.session_state.current_question = None
     st.session_state.score = 0
     st.session_state.total_answered = 0
     st.session_state.feedback = None
     st.session_state.char_to_speak = None
     st.session_state.show_audio_player = False
-    st.session_state.auto_play_audio = None
 
     # Reset Adventure Mode
-    st.session_state.monster_hp = 100
-    st.session_state.player_hp = 3
-    st.session_state.current_monster = random.choice(["🦖", "👾", "🐉", "🧟", "🧛", "🦈", "🦍", "🕷️"])
+    st.session_state.monster_hp = INITIAL_MONSTER_HP
+    st.session_state.player_hp = INITIAL_PLAYER_HP
+    st.session_state.current_monster = random.choice(MONSTERS)
 
     # Reset Memory Match
     st.session_state.memory_cards = []
@@ -265,10 +271,12 @@ def reset_game():
     st.session_state.memory_solved = False
 
 def next_question():
-    # 讀取完整題庫以供干擾項使用 (如果尚未讀取)
-    full_db = load_vocabulary(VOCAB_FILE)
+    """產生下一題（使用快取的完整題庫）"""
+    # 使用快取的完整題庫以供干擾項使用
+    if not st.session_state.full_db:
+        st.session_state.full_db = load_vocabulary(VOCAB_FILE)
     
-    target, options, mode = get_question(st.session_state.db, full_db)
+    target, options, mode = get_question(st.session_state.db, st.session_state.full_db)
     st.session_state.current_question = {
         'target': target,
         'options': options,
@@ -322,8 +330,7 @@ def check_answer(selected_option):
     
     # Adventure Mode Logic (Correct Answer)
     if selected_option == target and st.session_state.game_mode == 'adventure':
-        damage = 20
-        st.session_state.monster_hp -= damage
+        st.session_state.monster_hp -= DAMAGE_PER_CORRECT
         if st.session_state.monster_hp < 0:
             st.session_state.monster_hp = 0
     
@@ -331,13 +338,13 @@ def check_answer(selected_option):
     st.session_state.char_to_speak = target['char']
 
 def init_memory_game(db):
-    # Select 15 words (for 5x6 grid = 30 cards)
-    num_pairs = 15
+    """初始化記憶配對遊戲"""
+    # Select words for memory game grid
+    num_pairs = MEMORY_GAME_PAIRS
     if len(db) < num_pairs:
-        # If not enough words, duplicate them to fill the grid
-        # This is a simple fallback to ensure we always have 30 cards
-        selected_words = db * (num_pairs // len(db) + 1)
-        selected_words = selected_words[:num_pairs]
+        selected_words = db
+        # If less than 6, duplicate some to fill grid? Or just have smaller grid?
+        # For now, just use what we have, grid might be smaller.
     else:
         selected_words = random.sample(db, num_pairs)
     
@@ -367,24 +374,62 @@ def init_memory_game(db):
     st.session_state.flipped_indices = []
     st.session_state.memory_solved = False
 
+def start_game_mode(mode_name, db, min_words=MIN_WORDS_FOR_QUIZ):
+    """
+    啟動遊戲模式的通用函式
+    
+    Args:
+        mode_name: 遊戲模式名稱 ('general', 'adventure', 'review', 'memory')
+        db: 題庫資料
+        min_words: 最少需要的生字數量
+    
+    Returns:
+        bool: 是否成功啟動
+    """
+    if not db:
+        st.error("⚠️ 找不到題庫檔案")
+        return False
+    
+    if not st.session_state.selected_books:
+        st.warning("⚠️ 請至少選擇一冊！")
+        return False
+    
+    # 根據選擇的冊別過濾
+    filtered_db = [item for item in db if item['book'] in st.session_state.selected_books]
+    
+    if len(filtered_db) < min_words:
+        st.warning(f"⚠️ 選擇範圍內的生字少於 {min_words} 個 (共 {len(filtered_db)} 個)")
+        return False
+    
+    st.session_state.db = filtered_db
+    st.session_state.game_mode = mode_name
+    reset_game()
+    
+    if mode_name != 'memory':
+        next_question()
+    else:
+        init_memory_game(st.session_state.db)
+    
+    return True
+
+
 def main():
-    st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝", layout="wide")
+    st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
     
     # ==========================================
     # 自定義 CSS 樣式
     # ==========================================
     st.markdown("""
     <style>
-    /* 全局按鈕樣式調整 (預設為選單樣式) */
+    /* 全局按鈕樣式調整 */
     div.stButton > button {
-        font-size: 28px !important;
-        height: 80px !important;
-        border-radius: 12px !important;
+        font-size: 28px !important;  /* 放大按鈕文字 */
+        height: 80px !important;     /* 增加按鈕高度 */
+        border-radius: 15px !important; /* 圓角 */
         border: 2px solid #e0e0e0;
         background-color: #ffffff;
         color: #333333;
         transition: all 0.3s ease;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
     
     /* 滑鼠懸停效果 */
@@ -392,8 +437,7 @@ def main():
         border-color: #4CAF50 !important;
         color: #4CAF50 !important;
         background-color: #f9fff9 !important;
-        transform: translateY(-2px);
-        box-shadow: 4px 4px 10px rgba(0,0,0,0.15);
+        transform: scale(1.02);
     }
 
     /* 針對主要選項按鈕的容器微調 */
@@ -499,39 +543,13 @@ def main():
         
         with col1:
             if st.button("📖 一般練習", use_container_width=True):
-                if not full_db:
-                    st.error("⚠️ 找不到題庫檔案，請確認 vocabulary.csv 存在。")
-                elif not st.session_state.selected_books:
-                    st.warning("⚠️ 請至少選擇一冊來進行練習！")
-                else:
-                    # 根據選擇的冊別過濾
-                    filtered_db = [item for item in full_db if item['book'] in st.session_state.selected_books]
-                    
-                    if len(filtered_db) < 3:
-                        st.warning(f"⚠️ 選擇範圍內的生字少於 3 個 (共 {len(filtered_db)} 個)，無法開始遊戲。")
-                    else:
-                        st.session_state.db = filtered_db
-                        st.session_state.game_mode = 'general'
-                        reset_game()
-                        next_question()
-                        st.rerun()
+                if start_game_mode('general', full_db):
+                    st.rerun()
 
         with col2:
             if st.button("⚔️ 勇者闖關", use_container_width=True):
-                if not full_db:
-                    st.error("⚠️ 找不到題庫檔案")
-                elif not st.session_state.selected_books:
-                    st.warning("⚠️ 請至少選擇一冊！")
-                else:
-                    filtered_db = [item for item in full_db if item['book'] in st.session_state.selected_books]
-                    if len(filtered_db) < 3:
-                        st.warning("⚠️ 生字不足 3 個")
-                    else:
-                        st.session_state.db = filtered_db
-                        st.session_state.game_mode = 'adventure'
-                        reset_game()
-                        next_question()
-                        st.rerun()
+                if start_game_mode('adventure', full_db):
+                    st.rerun()
 
         with col3:
             if st.button("🔧 錯題複習", use_container_width=True):
@@ -570,42 +588,14 @@ def main():
         col4, col5 = st.columns(2)
         with col4:
             if st.button("🧩 翻牌配對", use_container_width=True):
-                if not full_db:
-                    st.error("⚠️ 找不到題庫檔案")
-                elif not st.session_state.selected_books:
-                    st.warning("⚠️ 請至少選擇一冊！")
-                else:
-                    filtered_db = [item for item in full_db if item['book'] in st.session_state.selected_books]
-                    if len(filtered_db) < 2:
-                        st.warning("⚠️ 生字不足 2 個")
-                    else:
-                        st.session_state.db = filtered_db
-                        st.session_state.game_mode = 'memory'
-                        reset_game()
-                        init_memory_game(st.session_state.db)
-                        st.rerun()
+                if start_game_mode('memory', full_db, min_words=2):
+                    st.rerun()
 
     # Game Interface
     elif st.session_state.game_mode in ['general', 'review', 'adventure', 'memory']:
         
         # Memory Match UI
         if st.session_state.game_mode == 'memory':
-            # 專屬 Memory Mode 的樣式注入
-            st.markdown("""
-            <style>
-            div.stButton > button {
-                font-size: 32px !important;
-                height: 80px !important;
-                border-radius: 16px !important;
-                box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
-            }
-            div.stButton > button:hover {
-                transform: translateY(-4px);
-                box-shadow: 6px 6px 15px rgba(0,0,0,0.2);
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
             st.subheader("🧩 翻牌配對")
             
             if st.session_state.memory_solved:
@@ -621,55 +611,26 @@ def main():
                     st.rerun()
                 return
 
-
             # Grid Layout
-            # We have 30 cards (15 pairs). 6 columns x 5 rows.
-            cols = st.columns(6) 
+            # We have 12 cards (6 pairs). 4 columns x 3 rows.
+            cols = st.columns(MEMORY_GAME_COLUMNS)
             for i, card in enumerate(st.session_state.memory_cards):
-                col = cols[i % 6]
+                col = cols[i % MEMORY_GAME_COLUMNS]
                 
                 # Determine button label and state
                 if card['is_matched']:
-                    # Matched: Invisible or disabled (Empty space or checkmark)
-                    col.button("✅", key=f"card_{i}", disabled=True, use_container_width=True)
+                    # Matched: Invisible or disabled
+                    col.button("✅", key=f"card_{i}", disabled=True)
                 elif card['is_flipped'] or i in st.session_state.flipped_indices:
-                    # Flipped: Show content (Front of card)
-                    # Highlight with primary color
-                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary", use_container_width=True)
+                    # Flipped: Show content
+                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary")
                 else:
                     # Hidden: Show Back
-                    # Use a pattern for the back (e.g., specific emoji or styled text)
-                    if col.button("🎴", key=f"card_{i}", use_container_width=True):
+                    if col.button("❓", key=f"card_{i}"):
                         # Handle Click
                         if len(st.session_state.flipped_indices) < 2:
                             st.session_state.flipped_indices.append(i)
                             
-                            # Play Audio for the flipped card
-                            # Note: card['content'] might be Zhuyin, but we want to read the Character.
-                            # We stored 'pair_id'. We can look up the original word if needed, 
-                            # but simpler is to check if it has a 'char' property or we can infer it.
-                            # In init_memory_game, we have:
-                            # Card 1: type='char', content=char
-                            # Card 2: type='zhuyin', content=zhuyin
-                            
-                            # We want to speak the CHARACTER regardless of what is flipped.
-                            # Find the matching card in the pair to get the char if this is zhuyin.
-                            target_char = ""
-                            if card['type'] == 'char':
-                                target_char = card['content']
-                            else:
-                                # Find matched pair
-                                for c in st.session_state.memory_cards:
-                                    if c['pair_id'] == card['pair_id'] and c['type'] == 'char':
-                                        target_char = c['content']
-                                        break
-                            
-                                        break
-                            
-                            if target_char:
-                                # Set state to play audio on next rerun
-                                st.session_state.auto_play_audio = target_char
-
                             # Check for match if 2 cards flipped
                             if len(st.session_state.flipped_indices) == 2:
                                 idx1 = st.session_state.flipped_indices[0]
@@ -690,25 +651,31 @@ def main():
                                 else:
                                     # No match
                                     st.toast("❌ 配對失敗，請再試一次", icon="⚠️")
-                                    # Wait for user to click "Continue" or click next card to reset
+                                    # We need to let the user see the second card before flipping back.
+                                    # But Streamlit reruns immediately.
+                                    # We can use a state to show "Mismatch" and a button to "Continue"?
+                                    # Or just rely on the user remembering?
+                                    # For simplicity: Keep them flipped until next click? 
+                                    # No, that's complex.
+                                    # Let's just clear flipped_indices on next interaction if > 2?
+                                    # Or use a "Continue" button if mismatch?
+                                    pass
+                        
+                        # If we have 2 flipped and they are NOT matched (from previous turn logic?), 
+                        # we need to reset them. But here we just appended.
+                        # Actually, if we just appended the 2nd card, we checked match.
+                        # If match -> cleared.
+                        # If no match -> they are still in flipped_indices.
+                        # So next render, they will be shown.
+                        # BUT, if user clicks a 3rd card, we should reset the previous 2.
                         
                         st.rerun()
             
             # If 2 cards are flipped and NOT matched, show a button to reset them
             if len(st.session_state.flipped_indices) == 2:
-                 st.info("👆 請記住這兩張牌的位置...")
                  if st.button("➡️ 繼續 (蓋牌)", type="primary", use_container_width=True):
                      st.session_state.flipped_indices = []
                      st.rerun()
-            
-            # Handle Auto Play Audio (Persistent across reruns)
-            if st.session_state.auto_play_audio:
-                # Use st.audio with autoplay (if supported) or the JS fallback
-                # Since we are using the JS function, we call it here.
-                # It will render the component NOW, in this frame.
-                play_audio_with_javascript(st.session_state.auto_play_audio)
-                # Clear it so it doesn't play again on next interaction (unless set again)
-                st.session_state.auto_play_audio = None
             
             return # End Memory Mode UI
 
