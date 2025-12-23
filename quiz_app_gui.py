@@ -353,6 +353,7 @@ def init_session_state():
         'mistakes_cache': None,  # 錯題本快取
         'char_to_speak': None,
         'show_audio_player': False,
+        'auto_play_audio': False,  # 自動播放音頻標記
         'selected_books': [],
         
         # 冒險模式狀態
@@ -449,6 +450,7 @@ def check_answer(selected_option):
     
     # 無論答對或答錯，都朗讀正確答案（該字的讀音）
     st.session_state.char_to_speak = target['char']
+    st.session_state.auto_play_audio = True  # 設定自動播放標記
 
 def init_memory_game(db):
     """初始化記憶配對遊戲"""
@@ -736,6 +738,12 @@ def main() -> None:
                 else:
                     # Hidden: Show Back
                     if col.button("❓", key=f"card_{i}"):
+                        # 翻牌時自動播放發音（只播放字卡，不播放注音卡）
+                        card = st.session_state.memory_cards[i]
+                        if card['type'] == 'char':
+                            st.session_state.char_to_speak = card['content']
+                            st.session_state.auto_play_audio = True
+                        
                         # Handle Click
                         if len(st.session_state.flipped_indices) < 2:
                             st.session_state.flipped_indices.append(i)
@@ -866,6 +874,11 @@ def main() -> None:
                 st.success(st.session_state.feedback['msg'], icon="✅")
             else:
                 st.error(st.session_state.feedback['msg'], icon="❌")
+            
+            # 自動播放音頻
+            if st.session_state.get('auto_play_audio', False) and st.session_state.char_to_speak:
+                play_audio_with_javascript(st.session_state.char_to_speak)
+                st.session_state.auto_play_audio = False
             
             # 顯示「聽讀音」按鈕
             col_audio, col_next = st.columns([1, 2])
