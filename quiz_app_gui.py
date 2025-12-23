@@ -628,15 +628,15 @@ def main():
                 # Determine button label and state
                 if card['is_matched']:
                     # Matched: Invisible or disabled (Empty space or checkmark)
-                    col.button("✅", key=f"card_{i}", disabled=True)
+                    col.button("✅", key=f"card_{i}", disabled=True, use_container_width=True)
                 elif card['is_flipped'] or i in st.session_state.flipped_indices:
                     # Flipped: Show content (Front of card)
                     # Highlight with primary color
-                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary")
+                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary", use_container_width=True)
                 else:
                     # Hidden: Show Back
                     # Use a pattern for the back (e.g., specific emoji or styled text)
-                    if col.button("🎴", key=f"card_{i}"):
+                    if col.button("🎴", key=f"card_{i}", use_container_width=True):
                         # Handle Click
                         if len(st.session_state.flipped_indices) < 2:
                             st.session_state.flipped_indices.append(i)
