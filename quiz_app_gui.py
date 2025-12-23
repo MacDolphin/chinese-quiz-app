@@ -729,8 +729,8 @@ def main() -> None:
             # 為記憶遊戲卡牌設定特殊樣式
             st.markdown("""
             <style>
-            /* 只針對記憶遊戲的按鈕 (位於 Column 中) */
-            [data-testid="column"] .stButton button {
+            /* 強制設定主區域所有按鈕的寬度 (針對記憶遊戲) */
+            section.main .stButton button {
                 min-width: 540px !important;
                 width: 100% !important;
                 font-size: 48px !important;
