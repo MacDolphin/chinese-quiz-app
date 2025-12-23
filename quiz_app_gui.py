@@ -365,7 +365,7 @@ def init_memory_game(db):
     st.session_state.memory_solved = False
 
 def main():
-    st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
+    st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝", layout="wide")
     
     # ==========================================
     # 自定義 CSS 樣式
@@ -591,8 +591,8 @@ def main():
             st.markdown("""
             <style>
             div.stButton > button {
-                font-size: 48px !important;
-                height: 160px !important;
+                font-size: 32px !important;
+                height: 80px !important;
                 border-radius: 16px !important;
                 box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
             }
