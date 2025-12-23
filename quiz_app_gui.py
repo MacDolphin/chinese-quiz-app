@@ -487,6 +487,54 @@ def init_memory_game(db):
     st.session_state.flipped_indices = []
     st.session_state.memory_solved = False
 
+def handle_card_flip(card_index: int) -> Optional[bool]:
+    """
+    處理卡片翻轉邏輯
+    
+    Args:
+        card_index: 被點擊的卡片索引
+        
+    Returns:
+        None: 只翻了一張卡片
+        True: 配對成功
+        False: 配對失敗
+    """
+    if len(st.session_state.flipped_indices) >= 2:
+        return None  # 已經翻了兩張，需要先重置
+    
+    st.session_state.flipped_indices.append(card_index)
+    
+    if len(st.session_state.flipped_indices) == 2:
+        return check_memory_match()
+    
+    return None
+
+def check_memory_match() -> bool:
+    """
+    檢查兩張翻開的卡片是否配對
+    
+    Returns:
+        True: 配對成功
+        False: 配對失敗
+    """
+    idx1, idx2 = st.session_state.flipped_indices
+    card1 = st.session_state.memory_cards[idx1]
+    card2 = st.session_state.memory_cards[idx2]
+    
+    if card1['pair_id'] == card2['pair_id']:
+        # 配對成功
+        st.session_state.memory_cards[idx1]['is_matched'] = True
+        st.session_state.memory_cards[idx2]['is_matched'] = True
+        st.session_state.flipped_indices = []
+        
+        # 檢查是否全部配對完成
+        if all(c['is_matched'] for c in st.session_state.memory_cards):
+            st.session_state.memory_solved = True
+        
+        return True
+    else:
+        return False
+
 def start_game_mode(mode_name, db, min_words=MIN_WORDS_FOR_QUIZ):
     """
     啟動遊戲模式的通用函式
@@ -526,64 +574,12 @@ def start_game_mode(mode_name, db, min_words=MIN_WORDS_FOR_QUIZ):
     return True
 
 
-def main():
+def main() -> None:
+    """主程式入口"""
     st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
     
-    # ==========================================
-    # 自定義 CSS 樣式
-    # ==========================================
-    st.markdown("""
-    <style>
-    /* 全局按鈕樣式調整 */
-    div.stButton > button {
-        font-size: 28px !important;  /* 放大按鈕文字 */
-        height: 80px !important;     /* 增加按鈕高度 */
-        border-radius: 15px !important; /* 圓角 */
-        border: 2px solid #e0e0e0;
-        background-color: #ffffff;
-        color: #333333;
-        transition: all 0.3s ease;
-    }
-    
-    /* 滑鼠懸停效果 */
-    div.stButton > button:hover {
-        border-color: #4CAF50 !important;
-        color: #4CAF50 !important;
-        background-color: #f9fff9 !important;
-        transform: scale(1.02);
-    }
-
-    /* 針對主要選項按鈕的容器微調 */
-    .option-btn-container {
-        margin-top: 20px;
-    }
-    
-    /* 題目文字樣式 */
-    .question-text {
-        font-size: 32px;
-        font-weight: bold;
-        color: #2c3e50;
-        text-align: center;
-        margin-bottom: 20px;
-        background-color: #e8f6f3;
-        padding: 15px;
-        border-radius: 10px;
-    }
-    
-    /* 大字卡樣式 */
-    .big-char {
-        font-size: 100px;
-        font-weight: bold;
-        color: #e74c3c; /* 紅色字體更顯眼 */
-        text-align: center;
-        padding: 20px;
-        background-color: #fff5f5;
-        border-radius: 20px;
-        border: 3px dashed #ffcccb;
-        margin-bottom: 20px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # 載入自訂 CSS 樣式
+    load_custom_css()
 
     init_session_state()
 
