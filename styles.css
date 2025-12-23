@@ -49,8 +49,8 @@ div.stButton>button:hover {
 
 /* 記憶遊戲卡牌樣式 */
 .memory-card-button button {
-    min-width: 180px !important;
-    /* 卡牌寬度增加到 3 倍 */
+    min-width: 540px !important;
+    /* 卡牌寬度增加到 540px */
     font-size: 48px !important;
     /* 字體放大 */
     height: 100px !important;
