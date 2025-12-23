@@ -372,16 +372,16 @@ def main():
     # ==========================================
     st.markdown("""
     <style>
-    /* 全局按鈕樣式調整 */
+    /* 全局按鈕樣式調整 (預設為選單樣式) */
     div.stButton > button {
-        font-size: 48px !important;  /* 再次放大文字 (28px -> 48px) */
-        height: 160px !important;    /* 再次增加高度 (80px -> 160px) */
-        border-radius: 16px !important;
+        font-size: 28px !important;
+        height: 80px !important;
+        border-radius: 12px !important;
         border: 2px solid #e0e0e0;
         background-color: #ffffff;
         color: #333333;
         transition: all 0.3s ease;
-        box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
     
     /* 滑鼠懸停效果 */
@@ -389,8 +389,8 @@ def main():
         border-color: #4CAF50 !important;
         color: #4CAF50 !important;
         background-color: #f9fff9 !important;
-        transform: translateY(-4px);
-        box-shadow: 6px 6px 15px rgba(0,0,0,0.2);
+        transform: translateY(-2px);
+        box-shadow: 4px 4px 10px rgba(0,0,0,0.15);
     }
 
     /* 針對主要選項按鈕的容器微調 */
@@ -422,9 +422,6 @@ def main():
         border: 3px dashed #ffcccb;
         margin-bottom: 20px;
     }
-    
-    /* 撲克牌樣式 (透過 Button 的特定樣式模擬) */
-    
     </style>
     """, unsafe_allow_html=True)
 
@@ -590,6 +587,22 @@ def main():
         
         # Memory Match UI
         if st.session_state.game_mode == 'memory':
+            # 專屬 Memory Mode 的樣式注入
+            st.markdown("""
+            <style>
+            div.stButton > button {
+                font-size: 48px !important;
+                height: 160px !important;
+                border-radius: 16px !important;
+                box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
+            }
+            div.stButton > button:hover {
+                transform: translateY(-4px);
+                box-shadow: 6px 6px 15px rgba(0,0,0,0.2);
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             st.subheader("🧩 翻牌配對")
             
             if st.session_state.memory_solved:
