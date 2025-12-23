@@ -224,6 +224,8 @@ def init_session_state():
         st.session_state.char_to_speak = None
     if 'show_audio_player' not in st.session_state:
         st.session_state.show_audio_player = False
+    if 'auto_play_audio' not in st.session_state:
+        st.session_state.auto_play_audio = None  # New state for auto-playing audio across reruns
 
     # Adventure Mode State
     if 'monster_hp' not in st.session_state:
@@ -250,6 +252,7 @@ def reset_game():
     st.session_state.feedback = None
     st.session_state.char_to_speak = None
     st.session_state.show_audio_player = False
+    st.session_state.auto_play_audio = None
 
     # Reset Adventure Mode
     st.session_state.monster_hp = 100
@@ -661,9 +664,11 @@ def main():
                                         target_char = c['content']
                                         break
                             
+                                        break
+                            
                             if target_char:
-                                # Use Javascript to play audio
-                                play_audio_with_javascript(target_char)
+                                # Set state to play audio on next rerun
+                                st.session_state.auto_play_audio = target_char
 
                             # Check for match if 2 cards flipped
                             if len(st.session_state.flipped_indices) == 2:
@@ -695,6 +700,15 @@ def main():
                  if st.button("➡️ 繼續 (蓋牌)", type="primary", use_container_width=True):
                      st.session_state.flipped_indices = []
                      st.rerun()
+            
+            # Handle Auto Play Audio (Persistent across reruns)
+            if st.session_state.auto_play_audio:
+                # Use st.audio with autoplay (if supported) or the JS fallback
+                # Since we are using the JS function, we call it here.
+                # It will render the component NOW, in this frame.
+                play_audio_with_javascript(st.session_state.auto_play_audio)
+                # Clear it so it doesn't play again on next interaction (unless set again)
+                st.session_state.auto_play_audio = None
             
             return # End Memory Mode UI
 
