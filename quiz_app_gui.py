@@ -224,6 +224,8 @@ def init_session_state():
         st.session_state.char_to_speak = None
     if 'show_audio_player' not in st.session_state:
         st.session_state.show_audio_player = False
+    if 'auto_play_audio' not in st.session_state:
+        st.session_state.auto_play_audio = None  # New state for auto-playing audio across reruns
 
     # Adventure Mode State
     if 'monster_hp' not in st.session_state:
@@ -250,6 +252,7 @@ def reset_game():
     st.session_state.feedback = None
     st.session_state.char_to_speak = None
     st.session_state.show_audio_player = False
+    st.session_state.auto_play_audio = None
 
     # Reset Adventure Mode
     st.session_state.monster_hp = 100
@@ -328,12 +331,13 @@ def check_answer(selected_option):
     st.session_state.char_to_speak = target['char']
 
 def init_memory_game(db):
-    # Select 6 words (for 4x3 grid)
-    num_pairs = 6
+    # Select 15 words (for 5x6 grid = 30 cards)
+    num_pairs = 15
     if len(db) < num_pairs:
-        selected_words = db
-        # If less than 6, duplicate some to fill grid? Or just have smaller grid?
-        # For now, just use what we have, grid might be smaller.
+        # If not enough words, duplicate them to fill the grid
+        # This is a simple fallback to ensure we always have 30 cards
+        selected_words = db * (num_pairs // len(db) + 1)
+        selected_words = selected_words[:num_pairs]
     else:
         selected_words = random.sample(db, num_pairs)
     
@@ -364,22 +368,23 @@ def init_memory_game(db):
     st.session_state.memory_solved = False
 
 def main():
-    st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝")
+    st.set_page_config(page_title="美洲華語生字小幫手", page_icon="📝", layout="wide")
     
     # ==========================================
     # 自定義 CSS 樣式
     # ==========================================
     st.markdown("""
     <style>
-    /* 全局按鈕樣式調整 */
+    /* 全局按鈕樣式調整 (預設為選單樣式) */
     div.stButton > button {
-        font-size: 28px !important;  /* 放大按鈕文字 */
-        height: 80px !important;     /* 增加按鈕高度 */
-        border-radius: 15px !important; /* 圓角 */
+        font-size: 28px !important;
+        height: 80px !important;
+        border-radius: 12px !important;
         border: 2px solid #e0e0e0;
         background-color: #ffffff;
         color: #333333;
         transition: all 0.3s ease;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
     
     /* 滑鼠懸停效果 */
@@ -387,7 +392,8 @@ def main():
         border-color: #4CAF50 !important;
         color: #4CAF50 !important;
         background-color: #f9fff9 !important;
-        transform: scale(1.02);
+        transform: translateY(-2px);
+        box-shadow: 4px 4px 10px rgba(0,0,0,0.15);
     }
 
     /* 針對主要選項按鈕的容器微調 */
@@ -584,6 +590,22 @@ def main():
         
         # Memory Match UI
         if st.session_state.game_mode == 'memory':
+            # 專屬 Memory Mode 的樣式注入
+            st.markdown("""
+            <style>
+            div.stButton > button {
+                font-size: 32px !important;
+                height: 80px !important;
+                border-radius: 16px !important;
+                box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
+            }
+            div.stButton > button:hover {
+                transform: translateY(-4px);
+                box-shadow: 6px 6px 15px rgba(0,0,0,0.2);
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             st.subheader("🧩 翻牌配對")
             
             if st.session_state.memory_solved:
@@ -599,26 +621,55 @@ def main():
                     st.rerun()
                 return
 
+
             # Grid Layout
-            # We have 12 cards (6 pairs). 4 columns x 3 rows.
-            cols = st.columns(4)
+            # We have 30 cards (15 pairs). 6 columns x 5 rows.
+            cols = st.columns(6) 
             for i, card in enumerate(st.session_state.memory_cards):
-                col = cols[i % 4]
+                col = cols[i % 6]
                 
                 # Determine button label and state
                 if card['is_matched']:
-                    # Matched: Invisible or disabled
-                    col.button("✅", key=f"card_{i}", disabled=True)
+                    # Matched: Invisible or disabled (Empty space or checkmark)
+                    col.button("✅", key=f"card_{i}", disabled=True, use_container_width=True)
                 elif card['is_flipped'] or i in st.session_state.flipped_indices:
-                    # Flipped: Show content
-                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary")
+                    # Flipped: Show content (Front of card)
+                    # Highlight with primary color
+                    col.button(card['content'], key=f"card_{i}", disabled=True, type="primary", use_container_width=True)
                 else:
                     # Hidden: Show Back
-                    if col.button("❓", key=f"card_{i}"):
+                    # Use a pattern for the back (e.g., specific emoji or styled text)
+                    if col.button("🎴", key=f"card_{i}", use_container_width=True):
                         # Handle Click
                         if len(st.session_state.flipped_indices) < 2:
                             st.session_state.flipped_indices.append(i)
                             
+                            # Play Audio for the flipped card
+                            # Note: card['content'] might be Zhuyin, but we want to read the Character.
+                            # We stored 'pair_id'. We can look up the original word if needed, 
+                            # but simpler is to check if it has a 'char' property or we can infer it.
+                            # In init_memory_game, we have:
+                            # Card 1: type='char', content=char
+                            # Card 2: type='zhuyin', content=zhuyin
+                            
+                            # We want to speak the CHARACTER regardless of what is flipped.
+                            # Find the matching card in the pair to get the char if this is zhuyin.
+                            target_char = ""
+                            if card['type'] == 'char':
+                                target_char = card['content']
+                            else:
+                                # Find matched pair
+                                for c in st.session_state.memory_cards:
+                                    if c['pair_id'] == card['pair_id'] and c['type'] == 'char':
+                                        target_char = c['content']
+                                        break
+                            
+                                        break
+                            
+                            if target_char:
+                                # Set state to play audio on next rerun
+                                st.session_state.auto_play_audio = target_char
+
                             # Check for match if 2 cards flipped
                             if len(st.session_state.flipped_indices) == 2:
                                 idx1 = st.session_state.flipped_indices[0]
@@ -639,31 +690,25 @@ def main():
                                 else:
                                     # No match
                                     st.toast("❌ 配對失敗，請再試一次", icon="⚠️")
-                                    # We need to let the user see the second card before flipping back.
-                                    # But Streamlit reruns immediately.
-                                    # We can use a state to show "Mismatch" and a button to "Continue"?
-                                    # Or just rely on the user remembering?
-                                    # For simplicity: Keep them flipped until next click? 
-                                    # No, that's complex.
-                                    # Let's just clear flipped_indices on next interaction if > 2?
-                                    # Or use a "Continue" button if mismatch?
-                                    pass
-                        
-                        # If we have 2 flipped and they are NOT matched (from previous turn logic?), 
-                        # we need to reset them. But here we just appended.
-                        # Actually, if we just appended the 2nd card, we checked match.
-                        # If match -> cleared.
-                        # If no match -> they are still in flipped_indices.
-                        # So next render, they will be shown.
-                        # BUT, if user clicks a 3rd card, we should reset the previous 2.
+                                    # Wait for user to click "Continue" or click next card to reset
                         
                         st.rerun()
             
             # If 2 cards are flipped and NOT matched, show a button to reset them
             if len(st.session_state.flipped_indices) == 2:
+                 st.info("👆 請記住這兩張牌的位置...")
                  if st.button("➡️ 繼續 (蓋牌)", type="primary", use_container_width=True):
                      st.session_state.flipped_indices = []
                      st.rerun()
+            
+            # Handle Auto Play Audio (Persistent across reruns)
+            if st.session_state.auto_play_audio:
+                # Use st.audio with autoplay (if supported) or the JS fallback
+                # Since we are using the JS function, we call it here.
+                # It will render the component NOW, in this frame.
+                play_audio_with_javascript(st.session_state.auto_play_audio)
+                # Clear it so it doesn't play again on next interaction (unless set again)
+                st.session_state.auto_play_audio = None
             
             return # End Memory Mode UI
 
