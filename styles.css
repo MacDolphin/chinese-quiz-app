@@ -7,6 +7,8 @@ div.stButton>button {
     background-color: #ffffff;
     color: #333333;
     transition: all 0.3s ease;
+    min-width: 540px !important;
+    /* 所有按鈕寬度設為 540px */
 }
 
 /* 滑鼠懸停效果 */
@@ -45,14 +47,4 @@ div.stButton>button:hover {
     border-radius: 20px;
     border: 3px dashed #ffcccb;
     margin-bottom: 20px;
-}
-
-/* 記憶遊戲卡牌樣式 */
-.memory-card-button button {
-    min-width: 540px !important;
-    /* 卡牌寬度增加到 540px */
-    font-size: 48px !important;
-    /* 字體放大 */
-    height: 100px !important;
-    /* 高度增加 */
 }
