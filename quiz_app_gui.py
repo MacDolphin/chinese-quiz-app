@@ -4,6 +4,7 @@ import csv
 import os
 import logging
 from datetime import datetime
+from typing import List, Dict, Optional, Tuple
 
 # ==========================================
 # 設定區
@@ -55,12 +56,17 @@ praises = [
 # 資料處理函式
 # ==========================================
 
-def load_vocabulary(filename):
+def load_vocabulary(filename: str) -> List[Dict[str, str]]:
     """
     通用讀取函式：可以讀取題庫，也可以讀取錯題本。
-    回傳一個不重複的生字列表。
+    
+    Args:
+        filename: CSV 檔案路徑
+        
+    Returns:
+        不重複的生字列表，每個元素包含 char, zhuyin, book 欄位
     """
-    vocab_dict = {} # 使用字典來去除重複 (key=char)
+    vocab_dict: Dict[str, Dict[str, str]] = {}  # 使用字典來去除重複 (key=char)
     
     if not os.path.exists(filename):
         return []
@@ -89,8 +95,12 @@ def load_vocabulary(filename):
         st.error(f"❌ 讀取檔案 {filename} 時發生錯誤: {e}")
         return []
 
-def log_mistake(word_data):
-    """將答錯的題目寫入錯題本"""
+def log_mistake(word_data: Dict[str, str]) -> None:
+    """將答錯的題目寫入錯題本
+    
+    Args:
+        word_data: 包含 char 和 zhuyin 的字典
+    """
     file_exists = os.path.isfile(ERROR_LOG_FILE)
     
     try:
@@ -111,8 +121,12 @@ def log_mistake(word_data):
         logging.error(f"記錄錯題時發生錯誤: {e}")
         st.error("❌ 錯題記錄失敗，請檢查檔案權限")
 
-def remove_mistake(target):
-    """從錯題本中移除答對的字"""
+def remove_mistake(target: Dict[str, str]) -> None:
+    """從錯題本中移除答對的字
+    
+    Args:
+        target: 包含 char 的字典
+    """
     if not os.path.exists(ERROR_LOG_FILE):
         return
 
@@ -136,8 +150,12 @@ def remove_mistake(target):
         logging.error(f"移除錯題時發生錯誤: {e}")
         st.error("❌ 移除錯題失敗")
 
-def load_mistakes_cache():
-    """載入錯題本快取（如果尚未載入）"""
+def load_mistakes_cache() -> List[Dict[str, str]]:
+    """載入錯題本快取（如果尚未載入）
+    
+    Returns:
+        錯題列表
+    """
     if st.session_state.mistakes_cache is None:
         if os.path.exists(ERROR_LOG_FILE):
             st.session_state.mistakes_cache = load_vocabulary(ERROR_LOG_FILE)
@@ -145,7 +163,7 @@ def load_mistakes_cache():
             st.session_state.mistakes_cache = []
     return st.session_state.mistakes_cache
 
-def save_mistakes_cache():
+def save_mistakes_cache() -> None:
     """將錯題本快取寫回檔案"""
     if st.session_state.mistakes_cache is None:
         return
@@ -166,8 +184,12 @@ def save_mistakes_cache():
         logging.error(f"儲存錯題本時發生錯誤: {e}")
         st.error("❌ 儲存錯題本失敗")
 
-def add_mistake_to_cache(word_data):
-    """將錯題加入快取（避免重複）"""
+def add_mistake_to_cache(word_data: Dict[str, str]) -> None:
+    """將錯題加入快取（避免重複）
+    
+    Args:
+        word_data: 包含 char 和 zhuyin 的字典
+    """
     load_mistakes_cache()
     
     # 檢查是否已存在
@@ -179,8 +201,12 @@ def add_mistake_to_cache(word_data):
         # 立即寫入檔案（保持向後相容）
         log_mistake(word_data)
 
-def remove_mistake_from_cache(target):
-    """從快取中移除錯題"""
+def remove_mistake_from_cache(target: Dict[str, str]) -> None:
+    """從快取中移除錯題
+    
+    Args:
+        target: 包含 char 的字典
+    """
     load_mistakes_cache()
     
     st.session_state.mistakes_cache = [
@@ -190,8 +216,16 @@ def remove_mistake_from_cache(target):
     # 立即寫入檔案
     save_mistakes_cache()
 
-def get_question(db, full_db=None):
-    """從題庫中隨機產生題目"""
+def get_question(db: List[Dict[str, str]], full_db: Optional[List[Dict[str, str]]] = None) -> Tuple[Optional[Dict], Optional[List], Optional[int]]:
+    """從題庫中隨機產生題目
+    
+    Args:
+        db: 當前題庫
+        full_db: 完整題庫（用於選擇干擾項）
+        
+    Returns:
+        (目標字, 選項列表, 模式) 的元組，如果題庫為空則返回 (None, None, None)
+    """
     if not db:
         return None, None, None
 
@@ -278,6 +312,24 @@ def play_audio_with_javascript(text):
     """
     
     components.html(html_code, height=80)
+
+def load_custom_css() -> None:
+    """載入自訂 CSS 樣式（從外部檔案或內建樣式）"""
+    css_file = 'styles.css'
+    if os.path.exists(css_file):
+        with open(css_file, 'r', encoding='utf-8') as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    else:
+        # 使用內建樣式作為後備
+        st.markdown("""
+        <style>
+        div.stButton > button {
+            font-size: 28px !important;
+            height: 80px !important;
+            border-radius: 15px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
 # ==========================================
 # Streamlit 介面邏輯
